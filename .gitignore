@@ -1,0 +1,10 @@
+*.dat
+*.pyc
+.DS_Store
+.bash_history
+.bash_history.vscode
+.env
+.idea
+.vscode
+__pycache__
+obj64
