@@ -14,7 +14,7 @@ CLIENT_PROVIDED = client requests err file net
 SERVER_MAIN     = server
 SERVER_CXX      = # no server/*.cc files needed for this build
 SERVER_COMMON   = crypto my_crypto
-SERVER_PROVIDED = server responses parsing my_storage persist sequentialmap_factories \
+SERVER_PROVIDED = server responses parsing my_storage  sequentialmap_factories \
                   err file net my_pool
 
 # Names for building the benchmark executable

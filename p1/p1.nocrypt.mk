@@ -12,7 +12,7 @@ CLIENT_PROVIDED = crypto requests my_crypto
 
 # Names for building the server
 SERVER_MAIN     = server
-SERVER_CXX      = server responses my_storage persist sequentialmap_factories
+SERVER_CXX      = server responses my_storage  sequentialmap_factories
 SERVER_COMMON   = err file net my_pool
 SERVER_PROVIDED = parsing crypto my_crypto
 

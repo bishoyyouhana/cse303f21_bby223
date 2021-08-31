@@ -11,7 +11,7 @@ CLIENT_PROVIDED = # This build does not use any pre-compiled solution files
 
 # Names for building the server
 SERVER_MAIN     = server
-SERVER_CXX      = server responses parsing my_storage persist \
+SERVER_CXX      = server responses parsing my_storage  \
                   sequentialmap_factories
 SERVER_COMMON   = crypto err file net my_crypto
 SERVER_PROVIDED = my_pool
