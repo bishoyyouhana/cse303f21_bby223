@@ -3,6 +3,13 @@
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <vector>
+#include <cstring>
+
+#include "../common/contextmanager.h"
+#include "../common/crypto.h"
+#include "../common/file.h"
+#include "../common/net.h"
+#include "../common/protocol.h"
 
 #include "err.h"
 
@@ -20,55 +27,48 @@ using namespace std;
 ///         vector if there was an error
 vector<uint8_t> aes_crypt_msg(EVP_CIPHER_CTX *ctx, const unsigned char *start,
                               int count) {
-  cout << "my_crypto.cc::aes_crypt_msg() is not implemented\n";
+  //cout << "my_crypto.cc::aes_crypt_msg() is not implemented\n";
 
   //intialize characters
   //int c_len = *count + AES_BLOCKSIZE, f_len = 0;
   //unsigned char *ciphertext = malloc(c_len);
   //EVP_EncryptInit_ex(ctx, NULL, NULL, NULL, NULL);
 
+  // need to find amount of data to store in a buffer of characters to write into. 1 megabyte?
+  // intialize variables, to use. This should include an out buffer, the length of that buffer read.
+  // Then encrypt/ decrypt the start address in memory to the length of count.
+  // Do one crypt count = message size, so all of the bytes in the message are crypted.
+  // Error check cryption
+  // If there are any other data un-caught by the update should be called by Final to catch the cipher block
   int cipher_block_size = EVP_CIPHER_block_size(EVP_CIPHER_CTX_cipher(ctx));
-  unsigned char out_buf[AES_BLOCKSIZE + cipher_block_size];
-  int out_len;
+  std::vector<uint8_t> out_buf(count + 2*cipher_block_size);
+  int out_len, fl_len;
 
   // crypt in_buf into out_buf
-    if (!EVP_CipherUpdate(ctx, out_buf, &out_len, start, start.size())) {
-      fprintf(stderr, "Error in EVP_CipherUpdate: %s\n",
-              ERR_error_string(ERR_get_error(), nullptr));
+    int a = EVP_CipherUpdate(ctx, out_buf.data(), &out_len, start, count);
+    if (!a) {
+      fprintf(stderr, "Error in EVP_CipherUpdate\n");
       return {};
     }
 
-    fwrite(out_buf, sizeof(unsigned char), out_len, out);
-    if (ferror(out)) {
-      perror("Error in fwrite()");
+    // EVP_CipherUpdate(ctx, out_buf.data(), &out_len, NULL, 0);
+    // The final block needs special attention!
+    int b = EVP_CipherFinal_ex(ctx, out_buf.data() + out_len, &fl_len);
+    if (!b) {
+      fprintf(stderr, "Error in EVP_CipherFinal_ex\n");
       return {};
-    }
-
-    // stop on EOF
-    if (start.size() < AES_BLOCKSIZE) {
-      break;
-    }
-
-      // The final block needs special attention!
-    if (!EVP_CipherFinal_ex(ctx, out_buf, &out_len)) {
-      fprintf(stderr, "Error in EVP_CipherFinal_ex: %s\n",
-            ERR_error_string(ERR_get_error(), nullptr));
-      return {};
-    }
-    fwrite(out_buf, sizeof(unsigned char), out_len, out);
-    if (ferror(out)) {
-      perror("Error in fwrite");
-      return {};
-    }
-    vector<uint8_t> result = out_buf;
-    return result;
+    } 
+    // resize to get correct format :D
+    out_buf.resize(out_len + fl_len);
+    return out_buf;
 
 
 
   // These asserts are just for preventing compiler warnings:
-  assert(ctx);
+  /*assert(ctx);
   assert(start);
   assert(count != -100);
 
   return {};
+  */
 }
