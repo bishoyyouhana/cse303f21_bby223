@@ -67,7 +67,6 @@ const int LEN_PROFILE_FILE = 1048576;
 
 /// Length of an rblock or kblock
 const int LEN_RKBLOCK = 256;
-
 /// Length of an RSA public key
 ///
 /// NB: It would be better not to hard-code this, since it's not defined by us,

@@ -8,7 +8,7 @@ alice = cse303.UserConfig("alice", "alice_is_awesome")
 fakealice = cse303.UserConfig("alice", "not_alice_password")
 bob = cse303.UserConfig("bob", "bob_is_the_best")
 afile1 = "server/responses.h"
-afile2 = "obj64/file.o"
+afile2 = "solutions/file.o"
 allfile = "allfile"
 
 # Create objects with server and client configuration

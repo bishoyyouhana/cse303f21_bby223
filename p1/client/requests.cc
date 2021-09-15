@@ -27,7 +27,7 @@ bool padR(std::vector<uint8_t> &v, size_t sz) {
   unsigned char buf[num];
   int bytes = RAND_bytes(buf, num);
   for (int i = 0; i < (int) sizeof(buf); i++)
-    v.push_back(buf[i]);
+    v.push_back((uint8_t) buf[i]);
   if(bytes)
     return true;
   return false;
@@ -40,27 +40,35 @@ bool padR(std::vector<uint8_t> &v, size_t sz) {
 ///
 /// @return A vec representing the two strings
 std::vector<uint8_t> ablock_ss(const string &s1, const string &s2) {
-  std::vector<uint8_t> vector;
-  vector.resize(256);
-  vector.insert(vector.begin(), s1.size());
-  vector.insert(vector.end(), s2.size());
-  for (int i = 0; i < 16; i++)
-    vector.insert(vector.end(), '\0');
-  for (int i = 0; i < (int) s1.size(); i++)
-    vector.insert(vector.end(), s1.at(i));
-  for (int i = 0; i < (int) s2.size(); i++)
-    vector.insert(vector.end(), s2.at(i));
-  // protocol.h s1 = user s2 = pass
+  // check correct length, if not return nothing as error.
   if (s1.size() > LEN_UNAME || s2.size() > LEN_PASSWORD) 
     return {};
-  /*result = s1.size();
-  result = result.append(s2.size());
-  result = result.append(NULL);
-  result = result.append(NULL);
-  result = result.append(s1);
-  result = result.append(s2);
-  */
-  return vector;
+  // final vector we send/return.
+  std::vector<uint8_t> result;
+  // convert strings into uint_8 vectors
+  std::vector<uint8_t> s1vector(s1.begin(), s1.end());
+  std::vector<uint8_t> s2vector(s2.begin(), s2.end());
+  
+  size_t s1size = s1vector.size();
+  size_t s2size = s2vector.size();
+  //size_t s1size = s1.size();
+  //size_t s2size = s2.size();
+  // add length's of s1 and s2 to the front of vector
+  result.insert(result.end(), (uint8_t*) &s1size, ((uint8_t*) &s1size) + sizeof(s1size));
+  result.insert(result.end(), (uint8_t*) &s2size, ((uint8_t*) &s2size) + sizeof(s2size));
+  // add null values into block
+  for (int i = 0; i < 16; i++)
+    result.push_back(0x00);
+  
+  
+  // add string vectors to main result
+  //https://www.includehelp.com/stl/appending-a-vector-to-a-vector.aspx#:~:text=To%20insert%2Fappend%20a%20vector%27s%20elements%20to,another%20vector%2C%20we%20use%20vector%3A%3Ainsert%20%28%29%20function.
+  result.insert(result.end(), s1vector.begin(), s1vector.end());
+  result.insert(result.end(), s2vector.begin(), s2vector.end());
+
+  result.resize(32 + s1vector.size() + s2vector.size());
+
+  return result;
 }
 
 /// Create unencrypted ablock contents from two strings
@@ -71,28 +79,36 @@ std::vector<uint8_t> ablock_ss(const string &s1, const string &s2) {
 ///
 /// @return A vec representing the two strings
 std::vector<uint8_t> ablock_sss(const string &s1, const string &s2, const string &s3) {
-  std::vector<uint8_t> vector;
   if (s1.size() > LEN_UNAME || s2.size() > LEN_PASSWORD || s3.size() > LEN_PROFILE_FILE) 
     return {};
-  vector.insert(vector.begin(), s1.size());
-  vector.insert(vector.end(), s2.size());
-  vector.insert(vector.end(), s3.size());
+  // final vector we send/return.
+  std::vector<uint8_t> result;
+
+   // convert strings into uint_8 vectors
+  std::vector<uint8_t> s1vector(s1.begin(), s2.end());
+  std::vector<uint8_t> s2vector(s2.begin(), s2.end());
+  std::vector<uint8_t> s3vector(s3.begin(), s3.end());
+
+  size_t s1size = s1vector.size();
+  size_t s2size = s2vector.size();
+  size_t s3size = s3vector.size();
+  // add length's of s1 and s2 to the front of vector
+  result.insert(result.end(), (uint8_t*) &s1size, ((uint8_t*) &s1size) + sizeof(s1size);
+  result.insert(result.end(), (uint8_t*) &s2size, ((uint8_t*) &s2size) + sizeof(s2size);
+  result.insert(result.end(), (uint8_t*) &s3size, ((uint8_t*) &s3size) + sizeof(s3size);
+  // add null values into block
   for (int i = 0; i < 8; i++)
-    vector.insert(vector.end(), '\0');
-  for (int i = 0; i < (int) s1.size(); i++)
-    vector.insert(vector.end(), s1.at(i));
-  for (int i = 0; i < (int) s2.size(); i++)
-    vector.insert(vector.end(), s2.at(i));
-  for (int i = 0; i < (int) s3.size(); i++)
-    vector.insert(vector.end(), s3.at(i));
-  return vector;
-  /* result = s1.size();
-  result = result.append(s2.size());
-  result = result.append(s3.size());
-  result = result.append(NULL);
-  result = result.append(s1);
-  result = result.append(s2);
-  result = result.append(s3); */
+    result.push_back(0x00);
+ 
+  // add string vectors to main result
+  //https://www.includehelp.com/stl/appending-a-vector-to-a-vector.aspx#:~:text=To%20insert%2Fappend%20a%20vector%27s%20elements%20to,another%20vector%2C%20we%20use%20vector%3A%3Ainsert%20%28%29%20function.
+  result.insert(result.end(), s1vector.begin(), s1vector.end());
+  result.insert(result.end(), s2vector.begin(), s2vector.end());
+  result.insert(result.end(), s3vector.begin(), s3vector.end());
+
+  result.resize(32 + s1.size() + s2.size() + s3.size());
+
+  return result;
 }
 
 /// Check if the provided result vector is a string representation of ERR_CRYPTO
@@ -122,81 +138,104 @@ bool check_err_crypto(const std::vector<uint8_t> &v) {
 ///
 /// @returns a vector with the (decrypted) result, or an empty vector on error
 std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::vector<uint8_t> &msg) {
-
-  // build aBlock and encrypt
-  std::vector<uint8_t> key;
-  key.resize(AES_KEYSIZE);
+  // build the key for the a block, pub key will be used for the rBlock
   // creates the aes key used for the request
-  key = create_aes_key();
+  std::vector<uint8_t> key = create_aes_key();
+  // key.resize(AES_KEYSIZE);
+
   // create the contex for the encryption
   EVP_CIPHER_CTX *aeskey = create_aes_context(key, true);
   std::vector<uint8_t> aBlockEncrypt = aes_crypt_msg(aeskey, msg);
+  //aBlockEncrypt.resize(AES_BLOCKSIZE);
 
-  // build rBlock from protocol.h
-  std::vector<uint8_t> rBlock;
-  rBlock.resize(LEN_RKBLOCK);
-  //for (int i = 0; i < (int) cmd.size(); i++)
-  rBlock.insert(rBlock.end(), (uint8_t)cmd, sizeof(cmd));
-  for (int i = 0; i < (int) key.size(); i++)
-    rBlock.push_back(key.at(i));
-  rBlock.push_back((unsigned char) msg.size());
-  padR(rBlock, rBlock.size());
-  // encrypt rBlock
-  std::vector<uint8_t> rBlockEncrypt;
-  int numBytes = RSA_public_encrypt(LEN_RKBLOCK, rBlock.data(), rBlockEncrypt.data(), pub, RSA_PKCS1_OAEP_PADDING); 
-  rBlockEncrypt.resize(numBytes);
+  // build rBlock from protocol.h, start with building the request string
+  std::vector<uint8_t> rBlock(cmd.begin(), cmd.end());
+  //rBlock.resize(LEN_RKBLOCK);
+  // add aeskey into the unencrypted rBlock
+  rBlock.insert(rBlock.end(), key.begin(), key.end());
+  //size_t msgSize = msg.size();
+  //rBlock.insert(rBlock.end(), (uint8_t*) &msgSize, ((uint8_t*) &msgSize)) + sizeof(msgSize));
+  // add the unecrypted ablock length to rBlock
+  size_t aBlockSize = aBlockEncrypt.size();
+  rBlock.insert(rBlock.end(), (uint8_t*) &aBlockSize, ((uint8_t*) &aBlockSize) + sizeof(aBlockSize));
+
+  // pad and resize for formatting
+  if (!padR(rBlock, LEN_RBLOCK_CONTENT))
+    return {};
+  // rBlock.resize(LEN_RBLOCK_CONTENT);
+
+  // encrypt rBlock using RSA encryption
+  std::vector<uint8_t> rBlockEncrypt(RSA_size(pub));
+
+  int numBytes = RSA_public_encrypt(rBlock.size(), rBlock.data(), rBlockEncrypt.data(), pub, RSA_PKCS1_OAEP_PADDING); 
+  numBytes++;
+  //rBlockEncrypt.resize(numBytes);
+  // rBlockEncrypt.resize(LEN_RKBLOCK);
+
   // check if encryption happend and send result
   if (aBlockEncrypt.size() > 0 && rBlockEncrypt.size() > 0) {
+    // create a single block to send to the server
     std::vector<uint8_t> result;
-    result.resize(rBlockEncrypt.size() + aBlockEncrypt.size());
-    for (int i = 0; i < (int) rBlockEncrypt.size(); i++)
+    result.insert(result.end(), rBlockEncrypt.begin(), rBlockEncrypt.end());
+    result.insert(result.end(), aBlockEncrypt.begin(), aBlockEncrypt.end());
+    // result.resize(rBlockEncrypt.size() + aBlockEncrypt.size()); 
+    /*for (int i = 0; i < (int) rBlockEncrypt.size(); i++)
       result.push_back(rBlockEncrypt.at(i));
     for (int i = 0; i < (int) aBlockEncrypt.size(); i++)
-      result.insert(result.end(), aBlockEncrypt.at(i));
+      result.insert(result.end(), aBlockEncrypt.at(i)); */
     // send to server
-    if(send_reliably(sd,result)) {
+    if(send_reliably(sd, result)) {
+      //send_reliably(sd, aBlockEncrypt);
       std::vector<uint8_t> response = reliable_get_to_eof(sd);
-      while (response.empty()) { // keep reading until response is found
-        response = reliable_get_to_eof(sd);
-      }
 
-      // Check errors for decryption
+      // Check errors for decryption by the client-side (told by server)
       if (check_err_crypto(response)) {
-        cout << "Server could not decrypt @ablock\n";
+        cout << RES_ERR_CRYPTO;
         cout << endl;
         return {};
       }
+
       // decipher
+      // reset the context to be used for decryption
       reset_aes_context(aeskey, key, false);
       std::vector<uint8_t> decrpytmsg = aes_crypt_msg(aeskey, response);
+      // reclaim the memory the context use
       reclaim_aes_context(aeskey);
 
       // error codes
       std::string str(decrpytmsg.begin(), decrpytmsg.end()); // convert message into string for comparison
-      if (str.compare(RES_OK)) { // Look for OK, means request went through to server
-        cout << "Successful execution\n";
+      if (str == RES_OK) { // Look for OK, means request went through to server
+        //cout << "Successful execution";
+        //cout << endl;
         return decrpytmsg;
       }
-      else if (str.compare(RES_ERR_LOGIN)) { // error messages
-        cout << "Not a valid user\n";
+      else if (str == RES_ERR_LOGIN) { // error messages
+        cout << RES_ERR_LOGIN;
+        cout << endl;
       }
-      else if (str.compare(RES_ERR_LOGIN)) {
-         cout << "Wrong password or user\n";
+      else if (str == RES_ERR_LOGIN) {
+        cout << RES_ERR_LOGIN;
+        cout << endl;
       }
-      else if (str.compare(RES_ERR_USER_EXISTS)) {
-        cout << "User already exists\n";
+      else if (str == RES_ERR_USER_EXISTS) {
+        cout << RES_ERR_USER_EXISTS;
+        cout << endl;
       }
-      else if (str.compare(RES_ERR_REQ_FMT)) {
-        cout << "Server unable to extract user or password from request\n";
+      else if (str == RES_ERR_REQ_FMT) {
+        cout << RES_ERR_REQ_FMT;
+        cout << endl;
       }
-      else if (str.compare(RES_ERR_NO_USER)) {
-        cout << "Not a valid user\n";
+      else if (str == RES_ERR_NO_USER) {
+        cout << RES_ERR_NO_USER;
+        cout << endl;
       }
-      else if (str.compare(RES_ERR_NO_DATA)) {
-        cout << "No data found on user\n";
+      else if (str == RES_ERR_NO_DATA) {
+        cout << RES_ERR_NO_DATA;
+        cout << endl;
       }
-      else if (str.compare(RES_ERR_SERVER)) {
-        cout << "Error on server side\n";
+      else if (str == RES_ERR_SERVER) {
+        cout << RES_ERR_SERVER;
+        cout << endl;
       }
 
       // return empty, error or nothing was caught
@@ -215,16 +254,14 @@ std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::ve
 /// @param buf      The buffer holding a response
 /// @param filename The name of the file to write
 void send_result_to_file(const std::vector<uint8_t> &buf, const string &filename) {
-  // check the OK data byte, which should be the first two bytes
-  if (buf.at(0) == 79 && buf.at(1) == 75) {
-    // check next four bytes as binary integers
-    for (int i = 2; i < 6; i++) { // loop through the 3 byte and the 6 byte
-      if (buf.at(i) == 0 || buf.at(i) == 1)
-        return;
-      write_file(filename, buf, 6); // only return the d+ bytes after to the file.
-    }
-
+  // check the ___OK___ data byte, which should be the first 8 bytes
+  if (buf.at(0) == 95 && buf.at(1) == 95 && buf.at(2) == 95 && buf.at(3) == 79 && buf.at(4) == 75 && buf.at(5) == 95 && buf.at(6) == 95 && buf.at(7) == 95) { // O = 79 and K = 75
+    // check next four bytes as binary integers to get numbytes,
+    
+    // write to file the 
+    write_file(filename, buf, 12); // only return the d+ bytes after to the file.
   }
+  
 }
 
 /// req_key() writes a request for the server's key on a socket descriptor.
@@ -235,26 +272,26 @@ void send_result_to_file(const std::vector<uint8_t> &buf, const string &filename
 void req_key(int sd, const string &keyfile) {
   // send request for key
   // make sure key is of kblock length 
-  std::vector<uint8_t> sendKey;
-  sendKey.reserve(LEN_RKBLOCK);
-  //sendKey.insert(sendKey.begin(), REQ_KEY); // REQ_KEY
-  for (int i = 0; i < (int) REQ_KEY.length(); i++)
-    sendKey.insert(sendKey.end(), REQ_KEY[i]);
-  while (sendKey.size() < LEN_RKBLOCK) { // add pad0 to end of vector
-    sendKey.push_back('\0'); // append a null character
+  std::vector<uint8_t> sendKey(REQ_KEY.begin(), REQ_KEY.end());
+
+  // loop it until RBlock is correct size
+  int padding = LEN_RKBLOCK - sendKey.size();
+  while (padding > 0) { // add pad0 to end of vector
+    sendKey.push_back((uint8_t) 0); // append a zero character
+    padding--;
   }
+  sendKey.resize(LEN_RKBLOCK);
   if (send_reliably(sd, sendKey)) { // key request sent
-      std::vector<uint8_t> key = reliable_get_to_eof(sd);
-      while (key.empty()) { // keep reading until response is found
-        key = reliable_get_to_eof(sd);
-      }
-      if (keyfile.length() == LEN_RSA_PUBKEY) { // make sure we get correct public key length
-        write_file(keyfile, key, 0); // write to keyfile
-      }
+      std::vector<uint8_t> msg = reliable_get_to_eof(sd);
+      // check if server exists
+      cout << "got into file\n";
+      // make sure we get correct public key length
+      if (write_file(keyfile, msg, 0)) // write to keyfile
+        cout << "it worked\n";
   }
   // NB: These asserts are to prevent compiler warnings (send reliable)
-  assert(sd);
-  assert(keyfile.length() > 0);
+  //assert(sd);
+  //assert(keyfile.length() > 0);
 }
 
 /// req_reg() sends the REG command to register a new user

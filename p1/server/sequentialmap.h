@@ -30,6 +30,7 @@ public:
   /// Clear the map.  This operation needs to use 2pl
   virtual void clear() {
     std::cout << "sequentialmap.h::clear() is not implemented\n";
+    entries.clear();
   }
 
   /// Insert the provided key/value pair only if there is no mapping for the key
@@ -43,7 +44,10 @@ public:
   ///         existed in the table
   virtual bool insert(K key, V val, std::function<void()> on_success) {
     std::cout << "sequentialmap.h::insert() is not implemented\n";
-    return false;
+    // Iterate through the list, and check the key value. If it matches with K, false
+
+    // After iteration, insert key and val into list
+     return false;
   }
 
   /// Insert the provided key/value pair if there is no mapping for the key yet.
