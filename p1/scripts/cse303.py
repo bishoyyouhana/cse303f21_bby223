@@ -210,6 +210,11 @@ def check_file_result(f1, f2):
         print("["+green("OK")+"]")
     else:
         print("["+red("ERR")+"] Files do not match")
+        #with open(f1, 'r') as f:
+       #     print(f.read())
+       # with open(f2+".file.dat", 'r') as f:
+        #    print(f.read())
+       # print(filecmp.cmp(f1, f2+".file.dat"))
     delfile(f2+".file.dat")
 
 def check_file_list(file, list):

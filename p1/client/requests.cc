@@ -75,27 +75,28 @@ std::vector<uint8_t> ablock_ss(const string &s1, const string &s2) {
 ///
 /// @param s1 The first string
 /// @param s2 The second string
-/// @param s3 The third string
+/// @param s3 The third string (filename)
 ///
 /// @return A vec representing the two strings
-std::vector<uint8_t> ablock_sss(const string &s1, const string &s2, const string &s3) {
-  if (s1.size() > LEN_UNAME || s2.size() > LEN_PASSWORD || s3.size() > LEN_PROFILE_FILE) 
+std::vector<uint8_t> ablock_ssf(const string &s1, const string &s2, const string &s3) {
+  std::vector<uint8_t> s3vector = load_entire_file(s3);
+  if (s1.size() > LEN_UNAME || s2.size() > LEN_PASSWORD || s3vector.size() > LEN_PROFILE_FILE) 
     return {};
   // final vector we send/return.
   std::vector<uint8_t> result;
 
    // convert strings into uint_8 vectors
-  std::vector<uint8_t> s1vector(s1.begin(), s2.end());
+  std::vector<uint8_t> s1vector(s1.begin(), s1.end());
   std::vector<uint8_t> s2vector(s2.begin(), s2.end());
-  std::vector<uint8_t> s3vector(s3.begin(), s3.end());
+  // std::vector<uint8_t> s3vector(s3.begin(), s3.end());
 
   size_t s1size = s1vector.size();
   size_t s2size = s2vector.size();
   size_t s3size = s3vector.size();
   // add length's of s1 and s2 to the front of vector
-  result.insert(result.end(), (uint8_t*) &s1size, ((uint8_t*) &s1size) + sizeof(s1size);
-  result.insert(result.end(), (uint8_t*) &s2size, ((uint8_t*) &s2size) + sizeof(s2size);
-  result.insert(result.end(), (uint8_t*) &s3size, ((uint8_t*) &s3size) + sizeof(s3size);
+  result.insert(result.end(), (uint8_t*) &s1size, ((uint8_t*) &s1size) + sizeof(s1size));
+  result.insert(result.end(), (uint8_t*) &s2size, ((uint8_t*) &s2size) + sizeof(s2size));
+  result.insert(result.end(), (uint8_t*) &s3size, ((uint8_t*) &s3size) + sizeof(s3size));
   // add null values into block
   for (int i = 0; i < 8; i++)
     result.push_back(0x00);
@@ -106,7 +107,48 @@ std::vector<uint8_t> ablock_sss(const string &s1, const string &s2, const string
   result.insert(result.end(), s2vector.begin(), s2vector.end());
   result.insert(result.end(), s3vector.begin(), s3vector.end());
 
-  result.resize(32 + s1.size() + s2.size() + s3.size());
+  result.resize(32 + s1vector.size() + s2vector.size() + s3vector.size());
+
+  return result;
+}
+
+/// Create unencrypted ablock contents from two strings
+///
+/// @param s1 The first string
+/// @param s2 The second string
+/// @param s3 The third string
+///
+/// @return A vec representing the two strings
+std::vector<uint8_t> ablock_sss(const string &s1, const string &s2, const string &s3) {
+  //std::vector<uint8_t> s3vector = load_entire_file(s3);
+  if (s1.size() > LEN_UNAME || s2.size() > LEN_PASSWORD || s3.size() > LEN_UNAME) 
+    return {};
+  // final vector we send/return.
+  std::vector<uint8_t> result;
+
+   // convert strings into uint_8 vectors
+  std::vector<uint8_t> s1vector(s1.begin(), s1.end());
+  std::vector<uint8_t> s2vector(s2.begin(), s2.end());
+  std::vector<uint8_t> s3vector(s3.begin(), s3.end());
+
+  size_t s1size = s1vector.size();
+  size_t s2size = s2vector.size();
+  size_t s3size = s3vector.size();
+  // add length's of s1 and s2 to the front of vector
+  result.insert(result.end(), (uint8_t*) &s1size, ((uint8_t*) &s1size) + sizeof(s1size));
+  result.insert(result.end(), (uint8_t*) &s2size, ((uint8_t*) &s2size) + sizeof(s2size));
+  result.insert(result.end(), (uint8_t*) &s3size, ((uint8_t*) &s3size) + sizeof(s3size));
+  // add null values into block
+  for (int i = 0; i < 8; i++)
+    result.push_back(0x00);
+ 
+  // add string vectors to main result
+  //https://www.includehelp.com/stl/appending-a-vector-to-a-vector.aspx#:~:text=To%20insert%2Fappend%20a%20vector%27s%20elements%20to,another%20vector%2C%20we%20use%20vector%3A%3Ainsert%20%28%29%20function.
+  result.insert(result.end(), s1vector.begin(), s1vector.end());
+  result.insert(result.end(), s2vector.begin(), s2vector.end());
+  result.insert(result.end(), s3vector.begin(), s3vector.end());
+
+  result.resize(32 + s1vector.size() + s2vector.size() + s3vector.size());
 
   return result;
 }
@@ -204,9 +246,10 @@ std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::ve
 
       // error codes
       std::string str(decrpytmsg.begin(), decrpytmsg.end()); // convert message into string for comparison
-      if (str == RES_OK) { // Look for OK, means request went through to server
-        //cout << "Successful execution";
-        //cout << endl;
+      std::string strs = str.substr(0,8);
+      if (strs == RES_OK) { // Look for OK, means request went through to server
+        cout << RES_OK;
+        cout << endl;
         return decrpytmsg;
       }
       else if (str == RES_ERR_LOGIN) { // error messages
@@ -255,11 +298,12 @@ std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::ve
 /// @param filename The name of the file to write
 void send_result_to_file(const std::vector<uint8_t> &buf, const string &filename) {
   // check the ___OK___ data byte, which should be the first 8 bytes
-  if (buf.at(0) == 95 && buf.at(1) == 95 && buf.at(2) == 95 && buf.at(3) == 79 && buf.at(4) == 75 && buf.at(5) == 95 && buf.at(6) == 95 && buf.at(7) == 95) { // O = 79 and K = 75
+  std::string str(buf.begin(), buf.end());
+  if (str.substr(0,8) == RES_OK) { // O = 79 and K = 75
+    write_file(filename, buf, 16); // only return the d+ bytes after to the file.
+    //std::string hi = str.substr(16);
     // check next four bytes as binary integers to get numbytes,
     
-    // write to file the 
-    write_file(filename, buf, 12); // only return the d+ bytes after to the file.
   }
   
 }
@@ -284,10 +328,10 @@ void req_key(int sd, const string &keyfile) {
   if (send_reliably(sd, sendKey)) { // key request sent
       std::vector<uint8_t> msg = reliable_get_to_eof(sd);
       // check if server exists
-      cout << "got into file\n";
+      //cout << "got into file\n";
       // make sure we get correct public key length
-      if (write_file(keyfile, msg, 0)) // write to keyfile
-        cout << "it worked\n";
+      write_file(keyfile, msg, 0); // write to keyfile
+        //cout << "it worked\n";
   }
   // NB: These asserts are to prevent compiler warnings (send reliable)
   //assert(sd);
@@ -351,8 +395,8 @@ void req_sav(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param setfile The file whose contents should be sent
 void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &setfile, const string &) {
-  auto res = send_cmd(sd, pubkey, REQ_SET, ablock_sss(user, pass, setfile));
-  send_result_to_file(res, setfile + ".file.dat");
+  auto res = send_cmd(sd, pubkey, REQ_SET, ablock_ssf(user, pass, setfile));
+  //send_result_to_file(res, setfile + ".file.dat");
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubkey);
@@ -371,7 +415,7 @@ void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param getname The name of the user whose content should be fetched
 void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &getname, const string &) {
-  cout << "requests.cc::req_get() is not implemented\n";
+  //cout << "requests.cc::req_get() is not implemented\n";
   auto res = send_cmd(sd, pubkey, REQ_GET, ablock_sss(user, pass, getname));
   send_result_to_file(res, getname + ".file.dat");
   // NB: These asserts are to prevent compiler warnings
@@ -392,9 +436,9 @@ void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param allfile The file where the result should go
 void req_all(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &allfile, const string &) {
-  cout << "requests.cc::req_all() is not implemented\n";
-  auto res = send_cmd(sd, pubkey, REQ_ALL, ablock_sss(user, pass, allfile));
-  send_result_to_file(res, allfile + ".file.dat");
+  // cout << "requests.cc::req_all() is not implemented\n";
+  auto res = send_cmd(sd, pubkey, REQ_ALL, ablock_ss(user, pass));
+  send_result_to_file(res, allfile);
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubkey);
