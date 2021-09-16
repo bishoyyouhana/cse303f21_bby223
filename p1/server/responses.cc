@@ -22,30 +22,41 @@ bool handle_all(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
   // cout << "responses.cc::handle_all() is not implemented\n";
   // parse through aBlock to find username and password
-  std::string str(req.begin(), req.end());
   // assume length will be one byte long, cuz max pass and user is 64
-  // https://www.programiz.com/cpp-programming/string-int-conversion
-  int userLen = std::stoi(str.substr(0,1));
-  int passLen = std::stoi(str.substr(8,1));
-  // now use the lengths to properly substring the buffer for user and password
-  const std::string user = str.substr(32,userLen);
-  const std::string pass = str.substr(32+userLen, passLen);
+  int uLen = req.at(0);
+  int pLen = req.at(8);
+
+  // Get the user and pass using the lengths given by aBlock
+  std::string user(req.begin() + 32, req.begin() + 32 + uLen);
+  std::string pass(req.begin() + 32 + uLen, req.begin() + 32 + uLen + pLen);
 
   // let storage handle and get its msg
   Storage::result_t result = storage->get_all_users(user, pass);
   if (result.succeeded) {
+    // This should just be "___OK___"
     std::string msg = result.msg;
+    // this is the content block
+    std::vector<uint8_t> content = result.data;
+    // find length of content and append everything to send to client
+    size_t contentLen = content.size();
+    std::vector<uint8_t> block(msg.begin(), msg.end());
+    block.insert(block.end(), (uint8_t*) &contentLen, ((uint8_t*) &contentLen) + sizeof(contentLen));
+    block.insert(block.end(), content.begin(), content.end());
   
+    // aes encrypt the msg and send it back to Client
+    std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, block);
+    // send to client via socket
+    send_reliably(sd, encryptedBlock);
+  }
+  else { // Error occured, send Client encrypted error message
+    std::string msg = result.msg;
     // aes encrypt the msg and send it back to Client
     std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, msg);
     // send to client via socket
     send_reliably(sd, encryptedBlock);
   }
+
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(storage);
-  assert(ctx);
-  assert(req.size() > 0);
   return false;
 }
 
@@ -60,31 +71,37 @@ bool handle_all(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 bool handle_set(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
   // cout << "responses.cc::handle_set() is not implemented\n";
-  std::string str(req.begin(), req.end());
+  // parse through aBlock to find username and password
   // assume length will be one byte long, cuz max pass and user is 64
-  int userLen = std::stoi(str.substr(0,1));
-  int passLen = std::stoi(str.substr(8,1));
-  // int bLen = std::stoi(str.substr(16,1));
-  // now use the lengths to properly substring the buffer for user and password and content
-  const std::string user = str.substr(32,userLen);
-  const std::string pass = str.substr(32+userLen, passLen);
-  const std::vector<uint8_t> b(str.begin()+32+userLen+passLen, str.end());
+  int uLen = req.at(0);
+  int pLen = req.at(8);
+  //int cLen = req.at(16);
+
+  // Get the user and pass using the lengths given by aBlock
+  std::string user(req.begin() + 32, req.begin() + 32 + uLen);
+  std::string pass(req.begin() + 32 + uLen, req.begin() + 32 + uLen + pLen);
+  std::vector<uint8_t> content(req.begin() + 32 + uLen + pLen, req.end());
+
+
+  //const std::vector<uint8_t> b(str.begin()+32+userLen+passLen, str.end());
 
   // let storage handle and get its msg
-  Storage::result_t result = storage->set_user_data(user, pass, b);
+  Storage::result_t result = storage->set_user_data(user, pass, content);
   if(result.succeeded) {
     std::string msg = result.msg;
-  
+    // aes encrypt the msg and send it back to Client
+    std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, msg);
+    // send to client via socket
+    send_reliably(sd, encryptedBlock);
+  }
+  else { // Error occured, send Client encrypted error message
+    std::string msg = result.msg;
     // aes encrypt the msg and send it back to Client
     std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, msg);
     // send to client via socket
     send_reliably(sd, encryptedBlock);
   }
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(storage);
-  assert(ctx);
-  assert(req.size() > 0);
   return false;
 }
 
@@ -99,31 +116,44 @@ bool handle_set(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
   // cout << "responses.cc::handle_get() is not implemented\n";
-  std::string str(req.begin(), req.end());
+   // parse through aBlock to find username and password
   // assume length will be one byte long, cuz max pass and user is 64
-  int userLen = std::stoi(str.substr(0,1));
-  int passLen = std::stoi(str.substr(8,1));
-   int nLen = std::stoi(str.substr(16,1));
-  // now use the lengths to properly substring the buffer for user and password and name
-  const std::string user = str.substr(32,userLen);
-  const std::string pass = str.substr(32+userLen, passLen);
-  const std::string name = str.substr(32+userLen+passLen, nLen);
+  int uLen = req.at(0);
+  int pLen = req.at(8);
+  int nLen = req.at(16);
+
+  // Get the user and pass using the lengths given by aBlock
+  std::string user(req.begin() + 32, req.begin() + 32 + uLen);
+  std::string pass(req.begin() + 32 + uLen, req.begin() + 32 + uLen + pLen);
+  std::string name(req.begin() + 32 + uLen + pLen, req.begin() + 32 + uLen + pLen + nLen);
 
   // let storage handle and get its msg
   Storage::result_t result = storage->get_user_data(user, pass, name);
   if(result.succeeded) {
+    // This should just be "___OK___"
     std::string msg = result.msg;
+    // this is the content block
+    std::vector<uint8_t> content = result.data;
+    // find length of content and append everything to send to client
+    size_t contentLen = content.size();
+    content.resize(contentLen);
+    std::vector<uint8_t> block(msg.begin(), msg.end());
+    block.insert(block.end(), (uint8_t*) &contentLen, ((uint8_t*) &contentLen) + sizeof(contentLen));
+    block.insert(block.end(), content.begin(), content.end());
   
+    // aes encrypt the msg and send it back to Client
+    std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, block);
+    // send to client via socket
+    send_reliably(sd, encryptedBlock);
+  }
+  else { // Error occured, send Client encrypted error message
+    std::string msg = result.msg;
     // aes encrypt the msg and send it back to Client
     std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, msg);
     // send to client via socket
     send_reliably(sd, encryptedBlock);
   }
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(storage);
-  assert(ctx);
-  assert(req.size() > 0);
   return false;
 }
 
@@ -137,15 +167,15 @@ bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  cout << "responses.cc::handle_reg() is not implemented\n";
+  // cout << "responses.cc::handle_reg() is not implemented\n";
   // parse through aBlock to find username and password
-  std::string str(req.begin(), req.end());
   // assume length will be one byte long, cuz max pass and user is 64
-  int userLen = std::stoi(str.substr(0,1));
-  int passLen = std::stoi(str.substr(8,1));
-  // now use the lengths to properly substring the buffer for user and password
-  const std::string user = str.substr(32,userLen);
-  const std::string pass = str.substr(32+userLen, passLen);
+  int uLen = req.at(0);
+  int pLen = req.at(8);
+
+  // Get the user and pass using the lengths given by aBlock
+  std::string user(req.begin() + 32, req.begin() + 32 + uLen);
+  std::string pass(req.begin() + 32 + uLen, req.begin() + 32 + uLen + pLen);
 
   // let storage handle and get its msg
   Storage::result_t result = storage->add_user(user, pass);
@@ -157,11 +187,14 @@ bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
     // send to client via socket
     send_reliably(sd, encryptedBlock);
   }
+  else { // Error occured, send Client encrypted error message
+    std::string msg = result.msg;
+    // aes encrypt the msg and send it back to Client
+    std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, msg);
+    // send to client via socket
+    send_reliably(sd, encryptedBlock);
+  }
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(storage);
-  assert(ctx);
-  assert(req.size() > 0);
   return false;
 }
 
@@ -177,8 +210,6 @@ bool handle_key(int sd, const vector<uint8_t> &pubfile) {
   // do reliable send of pubfile on socket sd
   send_reliably(sd, pubfile);
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(pubfile.size() > 0);
   return false;
 }
 
@@ -193,25 +224,33 @@ bool handle_key(int sd, const vector<uint8_t> &pubfile) {
 /// @return true, to indicate that the server should stop, or false on an error
 bool handle_bye(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  cout << "responses.cc::handle_bye() is not implemented\n";
-  // parse through aBlock to find username and password
-  std::string str(req.begin(), req.end());
+  //cout << "responses.cc::handle_bye() is not implemented\n";
+   // parse through aBlock to find username and password
   // assume length will be one byte long, cuz max pass and user is 64
-  int userLen = std::stoi(str.substr(0,1));
-  int passLen = std::stoi(str.substr(8,1));
-  // now use the lengths to properly substring the buffer for user and password
-  const std::string user = str.substr(32,userLen);
-  const std::string pass = str.substr(32+userLen, passLen);
+  int uLen = req.at(0);
+  int pLen = req.at(8);
+
+  // Get the user and pass using the lengths given by aBlock
+  std::string user(req.begin() + 32, req.begin() + 32 + uLen);
+  std::string pass(req.begin() + 32 + uLen, req.begin() + 32 + uLen + pLen);
 
   // let storage handle and see if user is authentic
   Storage::result_t result = storage->auth(user, pass);
-  if (result.succeeded) // exit the client
+  if (result.succeeded) {// exit the client
+    std::string msg = result.msg;
+    // aes encrypt the msg and send it back to Client
+    std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, msg);
+    // send to client via socket
+    send_reliably(sd, encryptedBlock);
     return true;
-  // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(storage);
-  assert(ctx);
-  assert(req.size() > 0);
+  }
+  else { // Error occured, send Client encrypted error message
+    std::string msg = result.msg;
+    // aes encrypt the msg and send it back to Client
+    std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, msg);
+    // send to client via socket
+    send_reliably(sd, encryptedBlock);
+  }
   return false;
 }
 
@@ -227,23 +266,31 @@ bool handle_bye(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 bool handle_sav(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
   // cout << "responses.cc::handle_sav() is not implemented\n";
-  // NB: These asserts are to prevent compiler warnings
   // parse through aBlock to find username and password
-  std::string str(req.begin(), req.end());
   // assume length will be one byte long, cuz max pass and user is 64
-  int userLen = std::stoi(str.substr(0,1));
-  int passLen = std::stoi(str.substr(8,1));
-  // now use the lengths to properly substring the buffer for user and password
-  const std::string user = str.substr(32,userLen);
-  const std::string pass = str.substr(32+userLen, passLen);
+  int uLen = req.at(0);
+  int pLen = req.at(8);
+
+  // Get the user and pass using the lengths given by aBlock
+  std::string user(req.begin() + 32, req.begin() + 32 + uLen);
+  std::string pass(req.begin() + 32 + uLen, req.begin() + 32 + uLen + pLen);
 
   // let storage handle and see if user is authentic
   Storage::result_t result = storage->auth(user, pass);
-  if (result.succeeded) // persist the file
-    storage->save_file();
-  assert(sd);
-  assert(storage);
-  assert(ctx);
-  assert(req.size() > 0);
+  if (result.succeeded) {// persist the file
+    Storage::result_t result2 = storage->save_file();
+    std::string msg = result.msg;
+    // aes encrypt the msg and send it back to Client
+    std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, msg);
+    // send to client via socket
+    send_reliably(sd, encryptedBlock);
+  }
+  else { // Error occured, send Client encrypted error message
+    std::string msg = result.msg;
+    // aes encrypt the msg and send it back to Client
+    std::vector<uint8_t> encryptedBlock = aes_crypt_msg(ctx, msg);
+    // send to client via socket
+    send_reliably(sd, encryptedBlock);
+  }
   return false;
 }

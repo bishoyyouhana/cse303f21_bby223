@@ -305,6 +305,11 @@ void send_result_to_file(const std::vector<uint8_t> &buf, const string &filename
     // check next four bytes as binary integers to get numbytes,
     
   }
+  else {
+    write_file(filename, buf, 0);
+    cout << str;
+    cout << endl;
+  }
   
 }
 
@@ -348,10 +353,6 @@ void req_reg(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &, const string &) {
   auto res = send_cmd(sd, pubkey, REQ_REG, ablock_ss(user, pass));
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(pubkey);
-  assert(user.length() > 0);
-  assert(pass.length() > 0);
 }
 
 /// req_bye() writes a request for the server to exit.
@@ -364,10 +365,6 @@ void req_bye(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &, const string &) {
   auto res = send_cmd(sd, pubkey, REQ_BYE, ablock_ss(user, pass));
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(pubkey);
-  assert(user.length() > 0);
-  assert(pass.length() > 0);
 }
 
 /// req_sav() writes a request for the server to save its contents
@@ -380,10 +377,6 @@ void req_sav(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &, const string &) {
   auto res = send_cmd(sd, pubkey, REQ_SAV, ablock_ss(user, pass));
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(pubkey);
-  assert(user.length() > 0);
-  assert(pass.length() > 0);
 }
 
 /// req_set() sends the SET command to set the content for a user
@@ -395,14 +388,10 @@ void req_sav(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param setfile The file whose contents should be sent
 void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &setfile, const string &) {
+  auto foo = load_entire_file(setfile);
   auto res = send_cmd(sd, pubkey, REQ_SET, ablock_ssf(user, pass, setfile));
   //send_result_to_file(res, setfile + ".file.dat");
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(pubkey);
-  assert(user.length() > 0);
-  assert(pass.length() > 0);
-  assert(setfile.length() > 0);
 }
 
 /// req_get() requests the content associated with a user, and saves it to a
@@ -419,11 +408,6 @@ void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
   auto res = send_cmd(sd, pubkey, REQ_GET, ablock_sss(user, pass, getname));
   send_result_to_file(res, getname + ".file.dat");
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(pubkey);
-  assert(user.length() > 0);
-  assert(pass.length() > 0);
-  assert(getname.length() > 0);
 }
 
 /// req_all() sends the ALL command to get a listing of all users, formatted
@@ -440,9 +424,4 @@ void req_all(int sd, RSA *pubkey, const string &user, const string &pass,
   auto res = send_cmd(sd, pubkey, REQ_ALL, ablock_ss(user, pass));
   send_result_to_file(res, allfile);
   // NB: These asserts are to prevent compiler warnings
-  assert(sd);
-  assert(pubkey);
-  assert(user.length() > 0);
-  assert(pass.length() > 0);
-  assert(allfile.length() > 0);
 }
