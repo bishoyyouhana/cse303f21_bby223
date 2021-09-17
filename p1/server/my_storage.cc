@@ -53,11 +53,53 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t add_user(const string &user, const string &pass) {
-    cout << "my_storage.cc::add_user() is not implemented\n";
+    //cout << "my_storage.cc::add_user() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
+
+    //create salt
+    uint8_t salt;
+    AuthTableEntry new_user;
+    int success= RAND_bytes(&salt, sizeof(salt));
+
+    if(success == 0){
+      return {false, RES_ERR_SERVER, {}};
+    }
+    
+    //hash the password
+    vector<uint8_t> hashPass;
+    hashPass.reserve(SHA256_DIGEST_LENGTH);
+
+    vector<uint8_t> password(pass.begin(), pass.end());
+    hashPass.insert(hashPass.end(), password.begin(), password.end());
+    hashPass.push_back(salt);
+
+    //no need for context
+    SHA256(password.data(), hashPass.size(), hashPass.data());
+
+    vector<uint8_t> saltVec;
+    saltVec.reserve(SHA256_DIGEST_LENGTH);
+    saltVec.push_back(salt);
+
+    vector<uint8_t> content;
+
+    vector<uint8_t> usernameVec(user.begin(), user.end());
+    new_user.username.insert(new_user.username.end(), usernameVec.begin(), usernameVec.end());
+
+    //vector<uint8_t> saltVec(salt.begin(), salt.end());
+    new_user.salt.insert(new_user.salt.end(), saltVec.begin(), saltVec.end());
+
+    //vector<uint8_t> profVec(profile.begin(), profile.end());
+    new_user.content.insert(new_user.content.end(), content.begin(), content.end());
+
+    vector<uint8_t> passVec(pass.begin(), pass.end());
+    new_user.pass_hash.insert(new_user.pass_hash.end(), hashPass.begin(), hashPass.end());
+    
+    
+    auth_table->insert(user, new_user,[](){});
+  
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    return {true, RES_OK, {}};
   }
 
   /// Set the data bytes for a user, but do so if and only if the password
@@ -130,7 +172,7 @@ public:
   /// any open files related to incremental persistence.  It also needs to clean
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
-  virtual void shutdown() {
+  virtual void shutdown() { //don't implement in proj1
     cout << "my_storage.cc::shutdown() is not implemented\n";
   }
 
@@ -140,9 +182,64 @@ public:
   /// file can be renamed to replace the older version of the Storage object.
   ///
   /// @return A result tuple, as described in storage.h
-  virtual result_t save_file() {
-    cout << "my_storage.cc::save_file() is not implemented\n";
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+  virtual result_t save_file() { //persist
+    //cout << "my_storage.cc::save_file() is not implemented\n";
+    vector<uint8_t> result;
+    vector<uint8_t> AUTHENTRYvec(AUTHENTRY.begin(), AUTHENTRY.end());
+    result.insert(result.end(), AUTHENTRY.begin(), AUTHENTRY.end());
+    uint8_t bytesUsed;
+
+    //Necessary to get acces we need to use f.
+    auto lambdaF = [&](string, const AuthTableEntry &user){ //by reference capture 
+    result.push_back(static_cast<uint8_t>(user.username.size()));
+    result.push_back(static_cast<uint8_t>(sizeof(user.salt)));
+    result.push_back(static_cast<uint8_t>(sizeof(user.pass_hash)));
+    result.push_back(static_cast<uint8_t>(sizeof(user.content)));
+    
+    //result.push_back(static_cast<uint8_t>(user.username));
+    /*
+    result.push_back(user.salt);
+    result.push_back((user.pass_hash).begin(),(user.pass_hash).end());
+    result.push_back((user.content).begin(),(user.content).end());
+    */
+    vector<uint8_t> usernameVec(user.username.begin(), user.username.end());
+    result.insert(result.end(), usernameVec.begin(), usernameVec.end());
+    result.insert(result.end(), user.salt.begin(), user.salt.end());
+    result.insert(result.end(), user.pass_hash.begin(), user.pass_hash.end());
+    result.insert(result.end(), user.content.begin(), user.content.end());
+
+    bytesUsed =  static_cast<int>(sizeof(user.salt)) + static_cast<int>(sizeof(user.pass_hash)) + 
+                          static_cast<int>(sizeof(user.content))+ (user.username.size());
+    };
+  //call the lambda
+  this->auth_table->do_all_readonly(lambdaF,[](){});
+  //lambdaF(*auth_table);
+    
+    while(bytesUsed%8 !=0){
+      result.push_back('\0');
+      bytesUsed+= 1;
+    }
+
+    string currentFileName = this->filename;
+    string tempFileName = currentFileName + ".tmp";
+    FILE *storage_file = fopen(tempFileName.c_str(), "w+");
+
+    //while(bytesUsed%8 != 0){}
+
+    if (fputs((const char*) result.data(), storage_file) == EOF) {
+      //error
+      string msg = "File could not save";
+      return result_t{false, msg, {}};
+    }
+
+    if (rename(tempFileName.c_str(), currentFileName.c_str())) {
+      string msg = "File could not be renamed";
+      return result_t{false, msg, {}};
+  }
+  
+  return result_t{true, RES_OK, {}};
+    
+    //return {false, RES_ERR_UNIMPLEMENTED, {}};
   }
 
   /// Populate the Storage object by loading this.filename.  Note that load()
@@ -153,13 +250,90 @@ public:
   /// non-existent
   ///         file is not an error.
   virtual result_t load_file() {
+    //clear the tables first
+    this->auth_table->clear();
     FILE *storage_file = fopen(filename.c_str(), "r");
     if (storage_file == nullptr) {
       return {true, "File not found: " + filename, {}};
     }
+    char buffer[64];
+    vector<uint8_t> data; 
+    data.reserve(LEN_PROFILE_FILE);
+    
+    while (fgets(buffer, sizeof(buffer), storage_file)) {
+      data.push_back(*buffer);
+    }
+    
+    uint8_t pointer =8;
+      string user;
+      unsigned int user_len;
+      string salt;
+      unsigned int salt_len;
+      string pass;
+      unsigned int pass_len;
+      string profile;
+      unsigned int profile_len;
 
-    cout << "my_storage.cc::save_file() is not implemented\n";
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    while(pointer < data.size()){
+      //len username, len salt, len pass, len profile
+
+      user_len = data.at(pointer);
+      pointer += 8;
+      salt_len = data.at(pointer);
+      pointer += 8;
+      pass_len = data.at(pointer);
+      pointer += 8;
+      profile_len = data.at(pointer);
+      pointer += 8;
+
+      if (user_len> LEN_UNAME) {
+        string msg = "Username too long";
+        return result_t{false, msg, {}};
+      }
+
+      if (salt_len> LEN_SALT) {
+        string msg = "Salt too long";
+        return result_t{false, msg, {}};
+      }
+
+      if (pass_len> LEN_PASSHASH) {
+        string msg = "Password too long";
+        return result_t{false, msg, {}};
+      }
+
+      if (profile_len> LEN_PROFILE_FILE) {
+        string msg = "Profile too long";
+        return result_t{false, msg, {}};
+      }
+
+      user = data.at(pointer);
+      pointer += user_len;
+      salt = data.at(pointer);
+      pointer += salt_len;
+      pass = data.at(pointer);
+      pointer += pass_len;
+      profile = data.at(pointer);
+      pointer += profile_len;
+      
+      AuthTableEntry new_user;
+      vector<uint8_t> usernameVec(user.begin(), user.end());
+      new_user.username.insert(new_user.username.end(), usernameVec.begin(), usernameVec.end());
+      //new_user.username = user;
+      vector<uint8_t> saltVec(salt.begin(), salt.end());
+      new_user.salt.insert(new_user.salt.end(), saltVec.begin(), saltVec.end());
+
+      vector<uint8_t> profVec(profile.begin(), profile.end());
+      new_user.content.insert(new_user.content.end(), profVec.begin(), profVec.end());
+
+      vector<uint8_t> passVec(pass.begin(), pass.end());
+      new_user.pass_hash.insert(new_user.pass_hash.end(), passVec.begin(), passVec.end());
+
+      pointer += 8;
+    }
+
+    //cout << "my_storage.cc::save_file() is not implemented\n";
+    //return result_t{false, RES_ERR_UNIMPLEMENTED, {}};
+    return result_t{true, "Successfuly saved object", {}};
   }
 };
 

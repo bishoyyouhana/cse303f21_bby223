@@ -41,8 +41,7 @@ public:
   struct result_t {
     bool succeeded;  // True if the operation succeeded, false otherwise
     std::string msg; // The message to send to the client
-    std::vector<uint8_t>
-        data; // Optional additional content to return to the client
+    std::vector<uint8_t>  data; // Optional additional content to return to the client
   };
 
   /// Destructor for the storage object.
