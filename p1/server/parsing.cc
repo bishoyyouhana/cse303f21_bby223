@@ -17,7 +17,7 @@ using namespace std;
 
 ///helper method that checks if the block given is a kblock
 ///
-///@param block 
+///@param block the block to check 
 ///
 ///@return true value if it's a kblock
 
@@ -49,83 +49,73 @@ bool parse_request(int sd, RSA *pri, const vector<uint8_t> &pub,
 
   vector <uint8_t> request(LEN_RKBLOCK);
   //better to define a variable 'position' since it will be used elsewhere
-  vector <uint8_t>::iterator position = request.begin();
+  //vector <uint8_t>::iterator position = request.begin();
   int length;
   //client not requesting anything
-  if((length = reliable_get_to_eof_or_n(sd, position, LEN_RKBLOCK)) == -1) {
+  if((length = reliable_get_to_eof_or_n(sd, request.begin(), LEN_RKBLOCK)) == -1) {
     return false;
   }
   //handle the key if the block is a kblock
   if(is_kblock(request)) { //request?
     // key request
     //handle_key(sd, pri, pub, storage);
-    handle_key(sd, pub);
+    //handle_key(sd, pub);
     return false;
   }
 
   //extract the cmd from the storage object
   //1 - RSA decryption
-  vector <uint8_t> decrypted(LEN_RBLOCK_CONTENT);
+  //vector <uint8_t> decrypted;
+  //decrypted.reserve(LEN_RKBLOCK);
+
+  unsigned char* buffer;
   int numBytes;
-  if((numBytes = RSA_private_decrypt(length, request.data(), decrypted.data(), pri, RSA_PKCS1_OAEP_PADDING)) != LEN_RBLOCK_CONTENT) { //RSA_private_decrypt?
+  if((numBytes = RSA_private_decrypt(length, request.data(), buffer, pri, RSA_PKCS1_OAEP_PADDING)) == -1) { //RSA_private_decrypt?
     send_reliably(sd,RES_ERR_CRYPTO ); 
     //error
     return false;
   }
-  //cout<< decrypted<<endl;
-  //2- get the command requested
-  /*
-  unsigned char buffer[256]; 
-  string decryptedString;
-  for(int i = 0; i < decrypted.size(); i++) {
-      buffer[i] = decrypted.at(i);
-    }
-  //string cmd_requested((char*)decrypted, 7); //fix number
-  //set the aeskey 
-  for (int i = 0; i < buffer.size(); i++) {
-        decryptedString += buffer[i];
-    }
-    */
-  //vector <uint8_t> key(decryptedRBlock.begin() + 3, decryptedRBlock.begin() + 51); // find index
-  int len_ablock = decrypted.size(); //make sure length matches request 
+  string str(reinterpret_cast<char*>(buffer));
+  vector <uint8_t> decrypted (str.begin(), str.end());
+
+  //decrypted.reserve(LEN_RKBLOCK);
+  //decrypted.insert(decrypted.begin(),buffer); 
+ 
+  //2- get the command requested 
+  
+  //rblock 
+
+  //string str(reinterpret_cast<char *>(buffer));
+  vector<uint8_t> aeskey(decrypted.begin()+8, decrypted.begin()+56); //aeskey
+  EVP_CIPHER_CTX *aes_ctx; 
+
+  uint8_t ablockLength; 
+  memcpy(&ablockLength, decrypted.data() + 56, sizeof(uint8_t)); //ablock length
+  string cmd(decrypted.begin(), decrypted.begin()+8); //command
 
 
-  cout << "we reached this point"<<endl;
+  ContextManager aes_reset([&]() { reclaim_aes_context(aes_ctx); });
 
-  //3- get the ablock 
-  vector<uint8_t> ablock(len_ablock);
-  position = ablock.begin(); // no need to define a new one
-  if(reliable_get_to_eof_or_n(sd, position, len_ablock) == -1) {
-    //error reliable_get_to_eof_or_n() failed
+  vector<uint8_t> ablock(ablockLength);
+  reliable_get_to_eof_or_n(sd, ablock.begin(), ablockLength); //check server size  fix this
+
+  vector<uint8_t> context;
+  aes_ctx = create_aes_context(aeskey, false); /// Create context
+  context = aes_crypt_msg(aes_ctx, ablock);
+
+  if (context.size() == 0) { //cannot decrypt?
+    send_reliably(sd, RES_ERR_CRYPTO);
     return false;
-  } //uint8_t
-  //4- decrypt the ablock
-  //vector<uint8_t> AES_key(string((char*)(decrypt + 7), 51).begin(), string((char*)(decrypt +7), 51).end()); //fix number
-  vector<uint8_t> AES_key(decrypted.begin()+7, decrypted.end()); //fix number
-  EVP_CIPHER_CTX *aes_ctx = create_aes_context(AES_key , false);//AES key needs to be fixed
-  vector actual_ablock = aes_crypt_msg(aes_ctx, ablock);
-
-/*
-  reset_aes_context(aes_ctx, AES_key, true);//AES key needs to be fixed, also is this necessary?
-  if(!actual_ablock.size()) {
-    actual_ablock = aes_crypt_msg(aes_ctx, RES_ERR_CRYPTO);
-    if(!send_reliably(sd, actual_ablock)) {
-    }
-      //cout << "serve_client: (size = " << ablock.size() << ") ablock = " << reinterpret_cast<const char*>(ablock.data()) << endl;
-    return false;
-  }  
-  */
-// would this work?
-ContextManager aes_reset([&]() { reclaim_aes_context(aes_ctx); });
-
-  cout << "we reached this point"<<endl;
+  }
+          
+  reset_aes_context(aes_ctx, aeskey, true);
 
   //execute the function 
   vector<string> s = {REQ_REG, REQ_BYE, REQ_SAV, REQ_SET, REQ_GET, REQ_ALL};
   decltype(handle_reg) *cmds[] = {handle_reg, handle_bye, handle_sav,
                                   handle_set, handle_get, handle_all};
   for (size_t i = 0; i < s.size(); ++i){
-    if ( == s[i]) {return cmds[i](sd, storage, aes_ctx, ablock);}
+    if (cmd == s[i]) {return cmds[i](sd, storage, aes_ctx, ablock);}
   }
 
 //assertions to prevent warnings

@@ -12,6 +12,7 @@
 #include "map.h"
 #include "map_factories.h"
 #include "storage.h"
+//#include "../common/file.h"
 
 using namespace std;
 
@@ -65,7 +66,6 @@ public:
       return {false, RES_ERR_SERVER, {}};
     }
     
-    //hash the password
     vector<uint8_t> hashPass;
     hashPass.reserve(SHA256_DIGEST_LENGTH);
 
@@ -95,11 +95,13 @@ public:
     new_user.pass_hash.insert(new_user.pass_hash.end(), hashPass.begin(), hashPass.end());
     
     
-    auth_table->insert(user, new_user,[](){});
+    if(auth_table->insert(user, new_user,[](){})){
+      return {true, RES_OK, {}};
+    }
   
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {true, RES_OK, {}};
+    return {false, RES_ERR_USER_EXISTS, {}};
   }
 
   /// Set the data bytes for a user, but do so if and only if the password
@@ -112,12 +114,28 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t set_user_data(const string &user, const string &pass,
                                  const vector<uint8_t> &content) {
-    cout << "my_storage.cc::set_user_data() is not implemented\n";
+    //cout << "my_storage.cc::set_user_data() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
+
+    auto allow = this->auth(user, pass); //think about changing to tuple
+    if(allow.succeeded){
+      return result_t{false, RES_ERR_LOGIN , {}};
+    }
+
+    auto lambdaF = [&](AuthTableEntry& user)
+    {
+      user.content = content;
+    };
+
+    //AuthTableEntry new_user;
+
+    if (this->auth_table->do_with(user,lambdaF) == 0) return result_t{false, RES_ERR_NO_DATA, {}};
+    
+    return {true, RES_OK, {}};
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(content.size() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //return {true, RES_OK, {}};
   }
 
   /// Return a copy of the user data for a user, but do so only if the password
@@ -131,12 +149,29 @@ public:
   ///         an error
   virtual result_t get_user_data(const string &user, const string &pass,
                                  const string &who) {
-    cout << "my_storage.cc::get_user_data() is not implemented\n";
+    //cout << "my_storage.cc::get_user_data() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    assert(who.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+
+    auto allow = auth(user, pass);
+
+  if (allow.succeeded){
+    return result_t{false, RES_ERR_LOGIN , {}};
+  }
+
+    vector<uint8_t> content;
+    auto lamdaf = [&](const AuthTableEntry& user)
+    {
+      content = user.content;
+    };
+    if ((this->auth_table->do_with_readonly(who, lamdaf)) == 0)
+    {
+      return result_t{false, RES_ERR_NO_DATA, {}};
+    }
+    return result_t{true, RES_OK , content};
+    //assert(user.length() > 0);
+    //assert(pass.length() > 0);
+    //assert(who.length() > 0);
+    //return {false, RES_ERR_UNIMPLEMENTED, {}};
   }
 
   /// Return a newline-delimited string containing all of the usernames in the
@@ -147,11 +182,30 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t get_all_users(const string &user, const string &pass) {
-    cout << "my_storage.cc::get_all_users() is not implemented\n";
+    //cout << "my_storage.cc::get_all_users() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
+
+    auto allow = auth(user, pass);
+
+    if (allow.succeeded){
+      return result_t{false, RES_ERR_LOGIN , {}};
+    }
+
+    vector<uint8_t> allUsers;
+    auto lambdaf = [&](std::string, const AuthTableEntry& tmpuser)
+    {
+      vector<uint8_t> username(LEN_UNAME);
+      username.insert(username.begin(), tmpuser.username.begin(), tmpuser.username.end());
+      //allUsers.push_back(username);
+      allUsers.push_back('\n');
+    };
+
+    this->auth_table->do_all_readonly(lambdaf, [](){});
+
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+
+    return {true, RES_OK, allUsers};
   }
 
   /// Authenticate a user
@@ -161,11 +215,43 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t auth(const string &user, const string &pass) {
-    cout << "my_storage.cc::auth() is not implemented\n";
+    //cout << "my_storage.cc::auth() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    bool boolean; 
+
+    if(!(auth_table->do_with_readonly(user, [&](const AuthTableEntry& tmpUser){
+
+      vector<uint8_t> passVec(LEN_PASSWORD);
+      vector<uint8_t> hashPass(LEN_PASSHASH);
+      //hashPass.reserve(SHA256_DIGEST_LENGTH);
+      passVec.insert(passVec.begin(), pass.begin(), pass.end());
+      passVec.insert(passVec.end(), tmpUser.salt.begin(), tmpUser.salt.end());
+
+      SHA256_CTX sha256;
+      SHA256_Init(&sha256);
+      SHA256_Update(&sha256, passVec.data(), passVec.size());
+      SHA256_Final(hashPass.data(), &sha256);
+
+      //SHA256(passVec.data(), hashPass.size(), hashPass.data());
+
+      if(passVec == tmpUser.pass_hash){
+        boolean = true;
+      }else{ boolean = false;}
+
+      return;
+    }))){
+
+        return {false, RES_ERR_NO_USER, {}};
+    }
+
+
+    if (boolean){ 
+      return result_t{true, RES_OK, {}};
+    }else{return result_t{false, RES_ERR_LOGIN, {}};}
+    
+    //return {false, RES_ERR_LOGIN, {}}; //fix this
   }
 
   /// Shut down the storage when the server stops.  This method needs to close
@@ -186,7 +272,7 @@ public:
     //cout << "my_storage.cc::save_file() is not implemented\n";
     vector<uint8_t> result;
     vector<uint8_t> AUTHENTRYvec(AUTHENTRY.begin(), AUTHENTRY.end());
-    result.insert(result.end(), AUTHENTRY.begin(), AUTHENTRY.end());
+    result.insert(result.begin(), AUTHENTRY.begin(), AUTHENTRY.end());
     uint8_t bytesUsed;
 
     //Necessary to get acces we need to use f.
@@ -206,14 +292,16 @@ public:
     result.insert(result.end(), usernameVec.begin(), usernameVec.end());
     result.insert(result.end(), user.salt.begin(), user.salt.end());
     result.insert(result.end(), user.pass_hash.begin(), user.pass_hash.end());
-    result.insert(result.end(), user.content.begin(), user.content.end());
+
+    if(sizeof(user.content) != 0){result.insert(result.end(), user.content.begin(), user.content.end());}
 
     bytesUsed =  static_cast<int>(sizeof(user.salt)) + static_cast<int>(sizeof(user.pass_hash)) + 
                           static_cast<int>(sizeof(user.content))+ (user.username.size());
     };
   //call the lambda
   this->auth_table->do_all_readonly(lambdaF,[](){});
-  //lambdaF(*auth_table);
+
+    //cout<< result.data();
     
     while(bytesUsed%8 !=0){
       result.push_back('\0');
@@ -222,15 +310,22 @@ public:
 
     string currentFileName = this->filename;
     string tempFileName = currentFileName + ".tmp";
-    FILE *storage_file = fopen(tempFileName.c_str(), "w+");
+    FILE *storage_file = fopen(tempFileName.c_str(), "w");
 
     //while(bytesUsed%8 != 0){}
-
+    
     if (fputs((const char*) result.data(), storage_file) == EOF) {
       //error
       string msg = "File could not save";
       return result_t{false, msg, {}};
     }
+    /*
+    if(!write_file(tempFileName.c_str(), result, 0)){
+      //error
+      string msg = "File could not save";
+      return result_t{false, msg, {}};
+    }
+    */
 
     if (rename(tempFileName.c_str(), currentFileName.c_str())) {
       string msg = "File could not be renamed";
