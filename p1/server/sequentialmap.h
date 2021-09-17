@@ -29,8 +29,10 @@ public:
 
   /// Clear the map.  This operation needs to use 2pl
   virtual void clear() {
-    std::cout << "sequentialmap.h::clear() is not implemented\n";
-    entries.clear();
+    // std::cout << "sequentialmap.h::clear() is not implemented\n";
+    // entries.clear();
+    for (auto it = entries.begin(); it != entries.end(); ++it)
+      entries.erase(it);
   }
 
   /// Insert the provided key/value pair only if there is no mapping for the key
@@ -43,11 +45,19 @@ public:
   /// @return true if the key/value was inserted, false if the key already
   ///         existed in the table
   virtual bool insert(K key, V val, std::function<void()> on_success) {
-    std::cout << "sequentialmap.h::insert() is not implemented\n";
+    // std::cout << "sequentialmap.h::insert() is not implemented\n";
     // Iterate through the list, and check the key value. If it matches with K, false
-
-    // After iteration, insert key and val into list
-     return false;
+    //declare an interator
+    // https://stackoverflow.com/questions/22269435/how-to-iterate-through-a-list-of-objects-in-c
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      if (it->first == key)
+        return false;
+    } 
+    // insert key and value into list and fun on_success
+    entries.emplace(entries.begin(), key, val);
+    on_success();
+    return true;
+     // return false;
   }
 
   /// Insert the provided key/value pair if there is no mapping for the key yet.
@@ -63,8 +73,20 @@ public:
   ///         existed in the table and was thus updated instead
   virtual bool upsert(K key, V val, std::function<void()> on_ins,
                       std::function<void()> on_upd) {
-    std::cout << "sequentialmap.h::upsert() is not implemented\n";
-    return false;
+    // std::cout << "sequentialmap.h::upsert() is not implemented\n";
+    // Iterate through the list, and check the key value. If it matches with K, then replace the map
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      if (it->first == key) {
+        it->second = val;
+        on_upd();
+        return false; 
+      }
+    } 
+    // else insert values
+    // entries.push_back(std::pair<K, V> {key, val});
+    on_ins();
+    entries.emplace(entries.begin(), key, val);
+    return true;
   }
 
   /// Apply a function to the value associated with a given key.  The function
@@ -76,8 +98,15 @@ public:
   /// @return true if the key existed and the function was applied, false
   ///         otherwise
   virtual bool do_with(K key, std::function<void(V &)> f) {
-    std::cout << "sequentialmap.h::do_with() is not implemented\n";
-    return false;
+    // std::cout << "sequentialmap.h::do_with() is not implemented\n";
+    // Iterate through the list, and check the key value. If it matches with K, then do function
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      if (it->first == key) {
+        f(it->second);
+        return true;
+      }
+    }
+    return false; // key did not exist
   }
 
   /// Apply a function to the value associated with a given key.  The function
@@ -89,8 +118,15 @@ public:
   /// @return true if the key existed and the function was applied, false
   ///         otherwise
   virtual bool do_with_readonly(K key, std::function<void(const V &)> f) {
-    std::cout << "sequentialmap.h::do_with_readonly() is not implemented\n";
-    return false;
+    // std::cout << "sequentialmap.h::do_with_readonly() is not implemented\n";
+    // Iterate through the list, and check the key value. If it matches with K, then do function
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      if (it->first == key) {
+        f(it->second);
+        return true;
+      }
+    }
+    return false; // key did not exist
   }
 
   /// Remove the mapping from a key to its value
@@ -100,7 +136,16 @@ public:
   ///
   /// @return true if the key was found and the value unmapped, false otherwise
   virtual bool remove(K key, std::function<void()> on_success) {
-    std::cout << "sequentialmap.h::remove() is not implemented\n";
+    // std::cout << "sequentialmap.h::remove() is not implemented\n";
+    // Iterate through the list, and check the key value. If it matches with K, then do remove
+    // https://stackoverflow.com/questions/36823150/c-erasing-from-list-of-pairs
+    for (auto it=entries.begin(); it!=entries.end(); it++) {
+      if (it->first == key) {
+        entries.erase(it);
+        on_success();
+        return true;
+      }
+    } // no matched key
     return false;
   }
 
@@ -112,6 +157,12 @@ public:
   ///             useful for 2pl
   virtual void do_all_readonly(std::function<void(const K, const V &)> f,
                                std::function<void()> then) {
-    std::cout << "sequentialmap.h::do_all_readonly() is not implemented\n";
+    // std::cout << "sequentialmap.h::do_all_readonly() is not implemented\n";
+     // Iterate through the list, and check the key value. If it matches with K, then do function
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      f(it->first, it->second);
+    }
+    // no idea what unlocking is so just call then
+    then();
   }
 };
