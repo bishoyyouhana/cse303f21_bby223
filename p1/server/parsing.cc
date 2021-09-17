@@ -22,13 +22,16 @@ using namespace std;
 ///@return true value if it's a kblock
 
 bool is_kblock(vector <uint8_t> &block){
-  for(size_t i =0; i<block.size();i++){
+  /*for(size_t i =0; i<block.size();i++){
     if ((block[i] !=0) && (REQ_KEY[i] != block[i]))
     {
         return false; //not a kblock
     }
-  }
-  return true;
+  } */
+  std::string str(block.begin(), block.end());
+  if (str.substr(0,8) == REQ_KEY)
+    return true;
+  return false;
 }
 
 
@@ -47,7 +50,7 @@ bool parse_request(int sd, RSA *pri, const vector<uint8_t> &pub,
   //cout << "parsing.cc::parse_request() is not implemented\n";
   // NB: These assertions are only here to prevent compiler warnings
 
-  vector <uint8_t> request(LEN_RKBLOCK);
+  std::vector<uint8_t> request(LEN_RKBLOCK);
   //better to define a variable 'position' since it will be used elsewhere
   //vector <uint8_t>::iterator position = request.begin();
   int length;
@@ -60,23 +63,24 @@ bool parse_request(int sd, RSA *pri, const vector<uint8_t> &pub,
     // key request
     //handle_key(sd, pri, pub, storage);
     //handle_key(sd, pub);
+    // send key over to Client
+    handle_key(sd, pub);
     return false;
   }
-
   //extract the cmd from the storage object
   //1 - RSA decryption
   //vector <uint8_t> decrypted;
   //decrypted.reserve(LEN_RKBLOCK);
 
-  unsigned char* buffer;
-  int numBytes;
-  if((numBytes = RSA_private_decrypt(length, request.data(), buffer, pri, RSA_PKCS1_OAEP_PADDING)) == -1) { //RSA_private_decrypt?
+  // unsigned char* buffer;
+  std::vector<uint8_t> decrypted(RSA_size(pri));
+  if(RSA_private_decrypt(LEN_RKBLOCK, request.data(), decrypted.data(), pri, RSA_PKCS1_OAEP_PADDING) == -1) { //RSA_private_decrypt?
     send_reliably(sd,RES_ERR_CRYPTO ); 
     //error
     return false;
   }
-  string str(reinterpret_cast<char*>(buffer));
-  vector <uint8_t> decrypted (str.begin(), str.end());
+  // string str(reinterpret_cast<char*>(buffer));
+  // vector <uint8_t> decrypted (str.begin(), str.end());
 
   //decrypted.reserve(LEN_RKBLOCK);
   //decrypted.insert(decrypted.begin(),buffer); 
@@ -86,22 +90,22 @@ bool parse_request(int sd, RSA *pri, const vector<uint8_t> &pub,
   //rblock 
 
   //string str(reinterpret_cast<char *>(buffer));
-  vector<uint8_t> aeskey(decrypted.begin()+8, decrypted.begin()+56); //aeskey
+  std::vector<uint8_t> aeskey(decrypted.begin()+8, decrypted.begin()+56); //aeskey
   EVP_CIPHER_CTX *aes_ctx; 
+  // uint8_t ablockLength; 
+  // memcpy(&ablockLength, decrypted.data() + 56, sizeof(uint8_t)); //ablock length
+  size_t ablockLength;
+  memcpy(&ablockLength, decrypted.data() + 56, sizeof(size_t));
+  std::string cmd(decrypted.begin(), decrypted.begin()+8); //command
 
-  uint8_t ablockLength; 
-  memcpy(&ablockLength, decrypted.data() + 56, sizeof(uint8_t)); //ablock length
-  string cmd(decrypted.begin(), decrypted.begin()+8); //command
+  // ContextManager aes_reset([&]() { reclaim_aes_context(aes_ctx); });
 
+  std::vector<uint8_t> ablock(ablockLength);
+  reliable_get_to_eof_or_n(sd, ablock.begin(), (int) ablockLength); //check server size  fix this
 
-  ContextManager aes_reset([&]() { reclaim_aes_context(aes_ctx); });
-
-  vector<uint8_t> ablock(ablockLength);
-  reliable_get_to_eof_or_n(sd, ablock.begin(), ablockLength); //check server size  fix this
-
-  vector<uint8_t> context;
+  // std::vector<uint8_t> context;
   aes_ctx = create_aes_context(aeskey, false); /// Create context
-  context = aes_crypt_msg(aes_ctx, ablock);
+  std::vector<uint8_t>  context = aes_crypt_msg(aes_ctx, ablock);
 
   if (context.size() == 0) { //cannot decrypt?
     send_reliably(sd, RES_ERR_CRYPTO);
@@ -111,18 +115,19 @@ bool parse_request(int sd, RSA *pri, const vector<uint8_t> &pub,
   reset_aes_context(aes_ctx, aeskey, true);
 
   //execute the function 
-  vector<string> s = {REQ_REG, REQ_BYE, REQ_SAV, REQ_SET, REQ_GET, REQ_ALL};
+  std::vector<string> s = {REQ_REG, REQ_BYE, REQ_SAV, REQ_SET, REQ_GET, REQ_ALL};
   decltype(handle_reg) *cmds[] = {handle_reg, handle_bye, handle_sav,
                                   handle_set, handle_get, handle_all};
   for (size_t i = 0; i < s.size(); ++i){
-    if (cmd == s[i]) {return cmds[i](sd, storage, aes_ctx, ablock);}
+    if (cmd == s[i]) {
+      bool server = cmds[i](sd, storage, aes_ctx, context);
+      // reclaim ctx for memory
+      reclaim_aes_context(aes_ctx);
+      return server;
+      }
   }
 
 //assertions to prevent warnings
-  assert(pri);
-  assert(storage);
-  assert(pub.size() > 0);
-  assert(sd);
 
   return false;
 }

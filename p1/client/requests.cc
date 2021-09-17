@@ -209,8 +209,7 @@ std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::ve
   // encrypt rBlock using RSA encryption
   std::vector<uint8_t> rBlockEncrypt(RSA_size(pub));
 
-  int numBytes = RSA_public_encrypt(rBlock.size(), rBlock.data(), rBlockEncrypt.data(), pub, RSA_PKCS1_OAEP_PADDING); 
-  numBytes++;
+  RSA_public_encrypt(rBlock.size(), rBlock.data(), rBlockEncrypt.data(), pub, RSA_PKCS1_OAEP_PADDING); 
   //rBlockEncrypt.resize(numBytes);
   // rBlockEncrypt.resize(LEN_RKBLOCK);
 
@@ -281,8 +280,8 @@ std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::ve
         cout << endl;
       }
 
-      // return empty, error or nothing was caught
-      return {};
+      // return error or nothing was caught
+      return decrpytmsg;
     }
     else
       return {};
@@ -302,11 +301,9 @@ void send_result_to_file(const std::vector<uint8_t> &buf, const string &filename
   if (str.substr(0,8) == RES_OK) { // O = 79 and K = 75
     write_file(filename, buf, 16); // only return the d+ bytes after to the file.
     //std::string hi = str.substr(16);
-    // check next four bytes as binary integers to get numbytes,
-    
   }
   else {
-    write_file(filename, buf, 0);
+    // write_file(filename, buf, 0);
     cout << str;
     cout << endl;
   }
