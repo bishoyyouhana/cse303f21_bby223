@@ -20,7 +20,6 @@ using namespace std;
 /// @return false, to indicate that the server shouldn't stop
 bool handle_all(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  // cout << "responses.cc::handle_all() is not implemented\n";
   // parse through aBlock to find username and password
   // assume length will be one byte long, cuz max pass and user is 64
   int uLen = req.at(0);
@@ -70,7 +69,6 @@ bool handle_all(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_set(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  // cout << "responses.cc::handle_set() is not implemented\n";
   // parse through aBlock to find username and password
   // assume length will be one byte long, cuz max pass and user is 64
   int uLen = req.at(0);
@@ -81,9 +79,6 @@ bool handle_set(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   std::string user(req.begin() + 32, req.begin() + 32 + uLen);
   std::string pass(req.begin() + 32 + uLen, req.begin() + 32 + uLen + pLen);
   std::vector<uint8_t> content(req.begin() + 32 + uLen + pLen, req.end());
-
-
-  //const std::vector<uint8_t> b(str.begin()+32+userLen+passLen, str.end());
 
   // let storage handle and get its msg
   Storage::result_t result = storage->set_user_data(user, pass, content);
@@ -101,7 +96,6 @@ bool handle_set(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
     // send to client via socket
     send_reliably(sd, encryptedBlock);
   }
-  // NB: These asserts are to prevent compiler warnings
   return false;
 }
 
@@ -115,7 +109,6 @@ bool handle_set(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  // cout << "responses.cc::handle_get() is not implemented\n";
    // parse through aBlock to find username and password
   // assume length will be one byte long, cuz max pass and user is 64
   int uLen = req.at(0);
@@ -153,7 +146,6 @@ bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
     // send to client via socket
     send_reliably(sd, encryptedBlock);
   }
-  // NB: These asserts are to prevent compiler warnings
   return false;
 }
 
@@ -167,7 +159,6 @@ bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  // cout << "responses.cc::handle_reg() is not implemented\n";
   // parse through aBlock to find username and password
   // assume length will be one byte long, cuz max pass and user is 64
   int uLen = req.at(0);
@@ -194,7 +185,6 @@ bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
     // send to client via socket
     send_reliably(sd, encryptedBlock);
   }
-  // NB: These asserts are to prevent compiler warnings
   return false;
 }
 
@@ -206,10 +196,8 @@ bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 ///
 /// @return false, to indicate that the server shouldn't stop
 bool handle_key(int sd, const vector<uint8_t> &pubfile) {
-  // cout << "responses.cc::handle_key() is not implemented\n";
   // do reliable send of pubfile on socket sd
   send_reliably(sd, pubfile);
-  // NB: These asserts are to prevent compiler warnings
   return false;
 }
 
@@ -224,7 +212,6 @@ bool handle_key(int sd, const vector<uint8_t> &pubfile) {
 /// @return true, to indicate that the server should stop, or false on an error
 bool handle_bye(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  //cout << "responses.cc::handle_bye() is not implemented\n";
    // parse through aBlock to find username and password
   // assume length will be one byte long, cuz max pass and user is 64
   int uLen = req.at(0);
@@ -265,7 +252,6 @@ bool handle_bye(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_sav(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  // cout << "responses.cc::handle_sav() is not implemented\n";
   // parse through aBlock to find username and password
   // assume length will be one byte long, cuz max pass and user is 64
   int uLen = req.at(0);
