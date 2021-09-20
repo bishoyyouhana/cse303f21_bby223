@@ -51,8 +51,6 @@ std::vector<uint8_t> ablock_ss(const string &s1, const string &s2) {
   
   size_t s1size = s1vector.size();
   size_t s2size = s2vector.size();
-  //size_t s1size = s1.size();
-  //size_t s2size = s2.size();
   // add length's of s1 and s2 to the front of vector
   result.insert(result.end(), (uint8_t*) &s1size, ((uint8_t*) &s1size) + sizeof(s1size));
   result.insert(result.end(), (uint8_t*) &s2size, ((uint8_t*) &s2size) + sizeof(s2size));
@@ -183,20 +181,15 @@ std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::ve
   // build the key for the a block, pub key will be used for the rBlock
   // creates the aes key used for the request
   std::vector<uint8_t> key = create_aes_key();
-  // key.resize(AES_KEYSIZE);
 
   // create the contex for the encryption
   EVP_CIPHER_CTX *aeskey = create_aes_context(key, true);
   std::vector<uint8_t> aBlockEncrypt = aes_crypt_msg(aeskey, msg);
-  //aBlockEncrypt.resize(AES_BLOCKSIZE);
 
   // build rBlock from protocol.h, start with building the request string
   std::vector<uint8_t> rBlock(cmd.begin(), cmd.end());
-  //rBlock.resize(LEN_RKBLOCK);
   // add aeskey into the unencrypted rBlock
   rBlock.insert(rBlock.end(), key.begin(), key.end());
-  //size_t msgSize = msg.size();
-  //rBlock.insert(rBlock.end(), (uint8_t*) &msgSize, ((uint8_t*) &msgSize)) + sizeof(msgSize));
   // add the unecrypted ablock length to rBlock
   size_t aBlockSize = aBlockEncrypt.size();
   rBlock.insert(rBlock.end(), (uint8_t*) &aBlockSize, ((uint8_t*) &aBlockSize) + sizeof(aBlockSize));
@@ -204,14 +197,10 @@ std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::ve
   // pad and resize for formatting
   if (!padR(rBlock, LEN_RBLOCK_CONTENT))
     return {};
-  // rBlock.resize(LEN_RBLOCK_CONTENT);
 
   // encrypt rBlock using RSA encryption
   std::vector<uint8_t> rBlockEncrypt(RSA_size(pub));
-
   RSA_public_encrypt(rBlock.size(), rBlock.data(), rBlockEncrypt.data(), pub, RSA_PKCS1_OAEP_PADDING); 
-  //rBlockEncrypt.resize(numBytes);
-  // rBlockEncrypt.resize(LEN_RKBLOCK);
 
   // check if encryption happend and send result
   if (aBlockEncrypt.size() > 0 && rBlockEncrypt.size() > 0) {
@@ -219,14 +208,8 @@ std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::ve
     std::vector<uint8_t> result;
     result.insert(result.end(), rBlockEncrypt.begin(), rBlockEncrypt.end());
     result.insert(result.end(), aBlockEncrypt.begin(), aBlockEncrypt.end());
-    // result.resize(rBlockEncrypt.size() + aBlockEncrypt.size()); 
-    /*for (int i = 0; i < (int) rBlockEncrypt.size(); i++)
-      result.push_back(rBlockEncrypt.at(i));
-    for (int i = 0; i < (int) aBlockEncrypt.size(); i++)
-      result.insert(result.end(), aBlockEncrypt.at(i)); */
     // send to server
     if(send_reliably(sd, result)) {
-      //send_reliably(sd, aBlockEncrypt);
       std::vector<uint8_t> response = reliable_get_to_eof(sd);
 
       // Check errors for decryption by the client-side (told by server)
@@ -298,12 +281,10 @@ std::vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const std::ve
 void send_result_to_file(const std::vector<uint8_t> &buf, const string &filename) {
   // check the ___OK___ data byte, which should be the first 8 bytes
   std::string str(buf.begin(), buf.end());
-  if (str.substr(0,8) == RES_OK) { // O = 79 and K = 75
+  if (str.substr(0,8) == RES_OK) { 
     write_file(filename, buf, 16); // only return the d+ bytes after to the file.
-    //std::string hi = str.substr(16);
   }
   else {
-    // write_file(filename, buf, 0);
     cout << str;
     cout << endl;
   }
@@ -330,14 +311,8 @@ void req_key(int sd, const string &keyfile) {
   if (send_reliably(sd, sendKey)) { // key request sent
       std::vector<uint8_t> msg = reliable_get_to_eof(sd);
       // check if server exists
-      //cout << "got into file\n";
-      // make sure we get correct public key length
       write_file(keyfile, msg, 0); // write to keyfile
-        //cout << "it worked\n";
   }
-  // NB: These asserts are to prevent compiler warnings (send reliable)
-  //assert(sd);
-  //assert(keyfile.length() > 0);
 }
 
 /// req_reg() sends the REG command to register a new user
@@ -349,7 +324,6 @@ void req_key(int sd, const string &keyfile) {
 void req_reg(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &, const string &) {
   auto res = send_cmd(sd, pubkey, REQ_REG, ablock_ss(user, pass));
-  // NB: These asserts are to prevent compiler warnings
 }
 
 /// req_bye() writes a request for the server to exit.
@@ -361,7 +335,6 @@ void req_reg(int sd, RSA *pubkey, const string &user, const string &pass,
 void req_bye(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &, const string &) {
   auto res = send_cmd(sd, pubkey, REQ_BYE, ablock_ss(user, pass));
-  // NB: These asserts are to prevent compiler warnings
 }
 
 /// req_sav() writes a request for the server to save its contents
@@ -373,7 +346,6 @@ void req_bye(int sd, RSA *pubkey, const string &user, const string &pass,
 void req_sav(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &, const string &) {
   auto res = send_cmd(sd, pubkey, REQ_SAV, ablock_ss(user, pass));
-  // NB: These asserts are to prevent compiler warnings
 }
 
 /// req_set() sends the SET command to set the content for a user
@@ -385,10 +357,7 @@ void req_sav(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param setfile The file whose contents should be sent
 void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &setfile, const string &) {
-  auto foo = load_entire_file(setfile);
   auto res = send_cmd(sd, pubkey, REQ_SET, ablock_ssf(user, pass, setfile));
-  //send_result_to_file(res, setfile + ".file.dat");
-  // NB: These asserts are to prevent compiler warnings
 }
 
 /// req_get() requests the content associated with a user, and saves it to a
@@ -401,10 +370,8 @@ void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param getname The name of the user whose content should be fetched
 void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &getname, const string &) {
-  //cout << "requests.cc::req_get() is not implemented\n";
   auto res = send_cmd(sd, pubkey, REQ_GET, ablock_sss(user, pass, getname));
   send_result_to_file(res, getname + ".file.dat");
-  // NB: These asserts are to prevent compiler warnings
 }
 
 /// req_all() sends the ALL command to get a listing of all users, formatted
@@ -417,8 +384,6 @@ void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param allfile The file where the result should go
 void req_all(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &allfile, const string &) {
-  // cout << "requests.cc::req_all() is not implemented\n";
   auto res = send_cmd(sd, pubkey, REQ_ALL, ablock_ss(user, pass));
   send_result_to_file(res, allfile);
-  // NB: These asserts are to prevent compiler warnings
 }
