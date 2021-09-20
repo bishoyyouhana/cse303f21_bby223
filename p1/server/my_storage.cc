@@ -45,6 +45,37 @@ public:
   /// Destructor for the storage object.
   virtual ~MyStorage() {}
 
+/// Helper function that simplifies hashing
+  ///
+  /// @param pass   given password in string format
+  /// @param salt   salt in vector fomrat
+  /// @return hash   hash result 
+
+  virtual vector<uint8_t> hash_pass(string pass, vector<uint8_t> salt)
+  {
+    //cout << "hello in hash_pass" <<endl;
+    vector<uint8_t> toHash;
+    vector<uint8_t> password;
+    vector<uint8_t> saltVec;
+
+    password.insert(password.begin(), pass.begin(), pass.end());
+    saltVec.insert(saltVec.begin(), salt.begin(), salt.end());
+    toHash.insert(toHash.begin(), password.begin(), password.end());
+    toHash.insert(toHash.end(), saltVec.begin(), saltVec.end());
+
+    //make hash a bytevec
+    vector<uint8_t> hash;
+    hash.reserve(SHA256_DIGEST_LENGTH);
+
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+
+    SHA256_Update(&sha256, toHash.data(), toHash.size());
+    SHA256_Final(hash.data(), &sha256);
+
+    return hash;
+  }
+
   /// Create a new entry in the Auth table.  If the user already exists, return
   /// an error.  Otherwise, create a salt, hash the password, and then save an
   /// entry with the username, salt, hashed password, and a zero-byte content.
@@ -54,54 +85,79 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t add_user(const string &user, const string &pass) {
+    //cout << "add_user called\n";
     //cout << "my_storage.cc::add_user() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
 
-    //create salt
-    uint8_t salt;
+    //const AuthTableEntry& tmpuser
+
+
+    vector<uint8_t> saltVec;
+    vector<uint8_t> content;
+    unsigned char salt[LEN_SALT];
     AuthTableEntry new_user;
-    int success= RAND_bytes(&salt, sizeof(salt));
+    int success= RAND_bytes(salt, sizeof(salt));
+
+    string saltName(reinterpret_cast<char*>(salt));
+    saltVec.insert(saltVec.begin(), saltName.begin(), saltName.end());
 
     if(success == 0){
       return {false, RES_ERR_SERVER, {}};
     }
-    
+
+    vector<uint8_t> hashedPass = hash_pass(pass,saltVec);  
+  //cout << "in add user" <<endl;
+    //bool check = this->auth_table->insert(user, AuthTableEntry(user,saltVec,hashedPass,content));
+
+    new_user.username.insert(new_user.username.begin(), user.begin(), user.end());
+
+    new_user.salt.insert(new_user.salt.begin(), saltVec.begin(), saltVec.end());
+
+    new_user.content.insert(new_user.content.begin(), content.begin(), content.end());
+
+    new_user.pass_hash.insert(new_user.pass_hash.begin(), hashedPass.begin(), hashedPass.end());
+    bool check = auth_table->insert(user, new_user,[](){});
+    /*
     vector<uint8_t> hashPass;
-    hashPass.reserve(SHA256_DIGEST_LENGTH);
-
-    vector<uint8_t> password(pass.begin(), pass.end());
-    hashPass.insert(hashPass.end(), password.begin(), password.end());
-    hashPass.push_back(salt);
-
-    //no need for context
-    SHA256(password.data(), hashPass.size(), hashPass.data());
-
+    vector<uint8_t> toHash;
+    vector<uint8_t> password;
     vector<uint8_t> saltVec;
-    saltVec.reserve(SHA256_DIGEST_LENGTH);
-    saltVec.push_back(salt);
+
+    password.insert(password.begin(), pass.begin(), pass.end());
+    saltVec.insert(saltVec.begin(), saltName.begin(), saltName.end());
+    toHash.insert(toHash.begin(), password.begin(), password.end());
+    toHash.insert(toHash.end(), saltVec.begin(), saltVec.end());
+
+    hashPass.reserve(SHA256_DIGEST_LENGTH);
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256,toHash.data(), toHash.size() );
+    SHA256_Final(hashPass.data(), &sha256);
 
     vector<uint8_t> content;
 
     vector<uint8_t> usernameVec(user.begin(), user.end());
-    new_user.username.insert(new_user.username.end(), usernameVec.begin(), usernameVec.end());
+    new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
 
-    //vector<uint8_t> saltVec(salt.begin(), salt.end());
-    new_user.salt.insert(new_user.salt.end(), saltVec.begin(), saltVec.end());
+    new_user.salt.insert(new_user.salt.begin(), saltVec.begin(), saltVec.end());
 
-    //vector<uint8_t> profVec(profile.begin(), profile.end());
-    new_user.content.insert(new_user.content.end(), content.begin(), content.end());
+    new_user.content.insert(new_user.content.begin(), content.begin(), content.end());
 
-    vector<uint8_t> passVec(pass.begin(), pass.end());
-    new_user.pass_hash.insert(new_user.pass_hash.end(), hashPass.begin(), hashPass.end());
-    
+    new_user.pass_hash.insert(new_user.pass_hash.begin(), hashPass.begin(), hashPass.end());
     
     if(auth_table->insert(user, new_user,[](){})){
       return {true, RES_OK, {}};
     }
+    */
+   if (check == false)
+  {
+    //std::string msg = "User exists already" + check; 
+     return result_t{false, RES_ERR_USER_EXISTS , {}}; //return a specific message
+  }
   
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    return {false, RES_ERR_USER_EXISTS, {}};
+    //assert(user.length() > 0);
+    //assert(pass.length() > 0);
+    return {true, RES_OK, {}};
   }
 
   /// Set the data bytes for a user, but do so if and only if the password
@@ -118,7 +174,7 @@ public:
     // NB: These asserts are to prevent compiler warnings
 
     auto allow = this->auth(user, pass); //think about changing to tuple
-    if(allow.succeeded){
+    if(!allow.succeeded){
       return result_t{false, RES_ERR_LOGIN , {}};
     }
 
@@ -132,9 +188,7 @@ public:
     if (this->auth_table->do_with(user,lambdaF) == 0) return result_t{false, RES_ERR_NO_DATA, {}};
     
     return {true, RES_OK, {}};
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    assert(content.size() > 0);
+    
     //return {true, RES_OK, {}};
   }
 
@@ -154,7 +208,7 @@ public:
 
     auto allow = auth(user, pass);
 
-  if (allow.succeeded){
+  if (!allow.succeeded){
     return result_t{false, RES_ERR_LOGIN , {}};
   }
 
@@ -187,7 +241,7 @@ public:
 
     auto allow = auth(user, pass);
 
-    if (allow.succeeded){
+    if (!allow.succeeded){
       return result_t{false, RES_ERR_LOGIN , {}};
     }
 
@@ -217,41 +271,26 @@ public:
   virtual result_t auth(const string &user, const string &pass) {
     //cout << "my_storage.cc::auth() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    bool boolean; 
+    //bool boolean; 
+    string authUser;
+    vector<uint8_t> hashPass;
+    vector<uint8_t> saltVec;
+    auto lamdaF = [&]( const AuthTableEntry& tmpuser){
+    //if((auth_table->do_with_readonly(user, [&](const AuthTableEntry& tmpUser){
+    authUser = tmpuser.username;
+    saltVec = tmpuser.salt;
+    hashPass = tmpuser.pass_hash;
+    };
+    this->auth_table->do_with_readonly(user, lamdaF);
 
-    if(!(auth_table->do_with_readonly(user, [&](const AuthTableEntry& tmpUser){
+    vector<uint8_t> passVec = hash_pass(pass, saltVec);
 
-      vector<uint8_t> passVec(LEN_PASSWORD);
-      vector<uint8_t> hashPass(LEN_PASSHASH);
-      //hashPass.reserve(SHA256_DIGEST_LENGTH);
-      passVec.insert(passVec.begin(), pass.begin(), pass.end());
-      passVec.insert(passVec.end(), tmpUser.salt.begin(), tmpUser.salt.end());
-
-      SHA256_CTX sha256;
-      SHA256_Init(&sha256);
-      SHA256_Update(&sha256, passVec.data(), passVec.size());
-      SHA256_Final(hashPass.data(), &sha256);
-
-      //SHA256(passVec.data(), hashPass.size(), hashPass.data());
-
-      if(passVec == tmpUser.pass_hash){
-        boolean = true;
-      }else{ boolean = false;}
-
-      return;
-    }))){
-
-        return {false, RES_ERR_NO_USER, {}};
-    }
-
-
-    if (boolean){ 
-      return result_t{true, RES_OK, {}};
-    }else{return result_t{false, RES_ERR_LOGIN, {}};}
-    
-    //return {false, RES_ERR_LOGIN, {}}; //fix this
+    if (passVec == hashPass)
+  {
+    return result_t{true, RES_OK, {}};
+  } 
+  
+    return result_t{false, RES_ERR_LOGIN, {}};
   }
 
   /// Shut down the storage when the server stops.  This method needs to close
@@ -259,7 +298,7 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() { //don't implement in proj1
-    cout << "my_storage.cc::shutdown() is not implemented\n";
+    //cout << "my_storage.cc::shutdown() is not implemented\n";
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To
@@ -270,24 +309,25 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t save_file() { //persist
     //cout << "my_storage.cc::save_file() is not implemented\n";
-    vector<uint8_t> result;
+    //cout << "save_file called\n";
+    string currentFileName = this->filename;
+    string tempFileName = currentFileName + ".tmp";
+    FILE *storage_file = fopen(tempFileName.c_str(), "wb");
+
+    vector<uint8_t> padding;
     vector<uint8_t> AUTHENTRYvec(AUTHENTRY.begin(), AUTHENTRY.end());
-    result.insert(result.begin(), AUTHENTRY.begin(), AUTHENTRY.end());
+    //result.insert(result.begin(), AUTHENTRY.begin(), AUTHENTRY.end());
     uint8_t bytesUsed;
+    fwrite(AUTHENTRY.c_str(), AUTHENTRY.length(), 1 ,storage_file);
 
     //Necessary to get acces we need to use f.
     auto lambdaF = [&](string, const AuthTableEntry &user){ //by reference capture 
+    /*
     result.push_back(static_cast<uint8_t>(user.username.size()));
     result.push_back(static_cast<uint8_t>(sizeof(user.salt)));
     result.push_back(static_cast<uint8_t>(sizeof(user.pass_hash)));
     result.push_back(static_cast<uint8_t>(sizeof(user.content)));
     
-    //result.push_back(static_cast<uint8_t>(user.username));
-    /*
-    result.push_back(user.salt);
-    result.push_back((user.pass_hash).begin(),(user.pass_hash).end());
-    result.push_back((user.content).begin(),(user.content).end());
-    */
     vector<uint8_t> usernameVec(user.username.begin(), user.username.end());
     result.insert(result.end(), usernameVec.begin(), usernameVec.end());
     result.insert(result.end(), user.salt.begin(), user.salt.end());
@@ -297,28 +337,37 @@ public:
 
     bytesUsed =  static_cast<int>(sizeof(user.salt)) + static_cast<int>(sizeof(user.pass_hash)) + 
                           static_cast<int>(sizeof(user.content))+ (user.username.size());
+    */
+
+    size_t userSize = user.username.size(); size_t saltSize =sizeof(user.salt) ; size_t hashSize = sizeof(user.pass_hash); size_t contentSize = sizeof(user.content);
+    
+    fwrite(&userSize, sizeof(size_t), 1, storage_file);
+    fwrite(&saltSize, sizeof(size_t), 1, storage_file);
+    fwrite(&hashSize, sizeof(size_t), 1, storage_file);
+    fwrite(&contentSize, sizeof(size_t), 1, storage_file);
+
+    fwrite(user.username.c_str(), sizeof(char), userSize, storage_file);
+    fwrite(user.salt.data(), sizeof(uint8_t), saltSize, storage_file);
+    fwrite(user.pass_hash.data(), sizeof(uint8_t), hashSize, storage_file);
+    if(contentSize>0) fwrite(user.content.data(), sizeof(uint8_t), contentSize, storage_file);
+    bytesUsed =  user.username.size() + user.salt.size() + user.pass_hash.size() +user.content.size();
+
     };
-  //call the lambda
   this->auth_table->do_all_readonly(lambdaF,[](){});
-
-    //cout<< result.data();
-    
-    while(bytesUsed%8 !=0){
-      result.push_back('\0');
-      bytesUsed+= 1;
+    int pad = 8- (bytesUsed%8); 
+    while(pad != 0 ){
+      padding.push_back('\0');
+      --pad;
     }
 
-    string currentFileName = this->filename;
-    string tempFileName = currentFileName + ".tmp";
-    FILE *storage_file = fopen(tempFileName.c_str(), "w");
-
-    //while(bytesUsed%8 != 0){}
+    fwrite(padding.data(), sizeof(uint8_t), padding.size(), storage_file);
     
-    if (fputs((const char*) result.data(), storage_file) == EOF) {
-      //error
-      string msg = "File could not save";
+    if (rename(tempFileName.c_str(), currentFileName.c_str()) !=0) {
+    //if (rename(tempFileName.c_str(), this->filename)) {
+      string msg = "File could not be renamed";
+      cout << msg<< endl;
       return result_t{false, msg, {}};
-    }
+  }
     /*
     if(!write_file(tempFileName.c_str(), result, 0)){
       //error
@@ -326,13 +375,8 @@ public:
       return result_t{false, msg, {}};
     }
     */
-
-    if (rename(tempFileName.c_str(), currentFileName.c_str())) {
-      string msg = "File could not be renamed";
-      return result_t{false, msg, {}};
-  }
-  
-  return result_t{true, RES_OK, {}};
+  fclose(storage_file);
+ return result_t{true, RES_OK, {}};
     
     //return {false, RES_ERR_UNIMPLEMENTED, {}};
   }
@@ -347,69 +391,79 @@ public:
   virtual result_t load_file() {
     //clear the tables first
     this->auth_table->clear();
-    FILE *storage_file = fopen(filename.c_str(), "r");
+    FILE *storage_file = fopen(filename.c_str(), "rb");
+    size_t fileSize;
+    //char *buffer;
+    //size_t data;
+
     if (storage_file == nullptr) {
       return {true, "File not found: " + filename, {}};
     }
-    char buffer[64];
-    vector<uint8_t> data; 
-    data.reserve(LEN_PROFILE_FILE);
-    
-    while (fgets(buffer, sizeof(buffer), storage_file)) {
-      data.push_back(*buffer);
-    }
-    
-    uint8_t pointer =8;
-      string user;
-      unsigned int user_len;
-      string salt;
-      unsigned int salt_len;
-      string pass;
-      unsigned int pass_len;
-      string profile;
-      unsigned int profile_len;
+    //cout<<"user_len"<<endl;
 
-    while(pointer < data.size()){
+    fseek (storage_file , 0 , SEEK_END);
+    fileSize = ftell (storage_file);
+    rewind (storage_file);
+
+    vector<uint8_t> buffer(fileSize);
+    unsigned data = fread(buffer.data(), sizeof(char), fileSize , storage_file);
+
+    if(data  != fileSize){
+      return {false, "Incorrect number of bytes read from ", {}};
+    }
+    //cout<<fileSize<<endl;
+    //cout<<data<<endl;
+      unsigned int offset = 0;
+      string user, salt,pass, profile;
+      //const int user_len, salt_len, pass_len, profile_len;
+    while(offset < buffer.size()){
       //len username, len salt, len pass, len profile
 
-      user_len = data.at(pointer);
-      pointer += 8;
-      salt_len = data.at(pointer);
-      pointer += 8;
-      pass_len = data.at(pointer);
-      pointer += 8;
-      profile_len = data.at(pointer);
-      pointer += 8;
+    //authauth
+    offset += 8;
+    
 
-      if (user_len> LEN_UNAME) {
-        string msg = "Username too long";
-        return result_t{false, msg, {}};
-      }
+    // Read length of username
+    uint8_t user_len; //if the username is too many bytes
+    memcpy(&user_len, buffer.data() + offset, sizeof(uint8_t));
+    offset += sizeof(uint8_t);
+    //read length of salt
+    uint8_t salt_len; 
+    memcpy(&salt_len, buffer.data() + offset, sizeof(uint8_t));
+    offset += sizeof(uint8_t); //update offset
+    // Read length of paswword
 
-      if (salt_len> LEN_SALT) {
-        string msg = "Salt too long";
-        return result_t{false, msg, {}};
-      }
+    uint8_t pass_len; 
+    memcpy(&pass_len, buffer.data() + offset, sizeof(uint8_t));
+    offset += sizeof(uint8_t); //update offset
 
-      if (pass_len> LEN_PASSHASH) {
-        string msg = "Password too long";
-        return result_t{false, msg, {}};
-      }
+    // Read length of content
+    uint8_t content_len; 
+    memcpy(&content_len, buffer.data() + offset, sizeof(uint8_t));
+    offset += sizeof(uint8_t); //update offset
 
-      if (profile_len> LEN_PROFILE_FILE) {
-        string msg = "Profile too long";
-        return result_t{false, msg, {}};
-      }
+    // Read username
+    //memcpy(&user, buffer.data() + offset, user_len);
+    string username(buffer.begin() + offset, buffer.begin() + offset + user_len);
+    offset += user_len; //update offset to say we read this much of the file
+    //cout<<user_len<<endl;
 
-      user = data.at(pointer);
-      pointer += user_len;
-      salt = data.at(pointer);
-      pointer += salt_len;
-      pass = data.at(pointer);
-      pointer += pass_len;
-      profile = data.at(pointer);
-      pointer += profile_len;
-      
+    // Read salt
+    string salt(buffer.begin() + offset, buffer.begin() + offset + salt_len);
+    offset += salt_len; //update offset to say we read this much of the file
+    //cout<<salt_len<<endl;
+    
+    // Read pass
+    //cout<<fileSize<<endl;
+    //cout<<offset<<endl;
+    //cout<<pass_len<<endl;
+    string pass(buffer.begin() + offset, buffer.begin() + offset + pass_len);
+    offset += pass_len; //update offset to say we read this much of the file
+
+    // Read profile
+    string profile(buffer.begin() + offset, buffer.begin() + offset + content_len);
+    offset += content_len; //update offset to say we read this much of the file
+
       AuthTableEntry new_user;
       vector<uint8_t> usernameVec(user.begin(), user.end());
       new_user.username.insert(new_user.username.end(), usernameVec.begin(), usernameVec.end());
@@ -423,12 +477,14 @@ public:
       vector<uint8_t> passVec(pass.begin(), pass.end());
       new_user.pass_hash.insert(new_user.pass_hash.end(), passVec.begin(), passVec.end());
 
-      pointer += 8;
+      //offset += sizeof(AUTHENTRY);
     }
 
     //cout << "my_storage.cc::save_file() is not implemented\n";
     //return result_t{false, RES_ERR_UNIMPLEMENTED, {}};
-    return result_t{true, "Successfuly saved object", {}};
+    //free (buffer);
+    fclose(storage_file);
+    return result_t{true, "Loaded: "+filename, {}};
   }
 };
 
