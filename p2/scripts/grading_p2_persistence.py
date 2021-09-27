@@ -13,7 +13,7 @@ filet3 = "server/server.cc"
 filet4 = "client/requests.cc"
 fileb1 = "solutions/file.o"
 fileb2 = "solutions/err.o"
-fileb3 = "solutions/crypto.o"
+fileb3 = "solutions/my_pool.o"
 fileb4 = "solutions/net.o"
 allfile = "allfile"
 makefiles = ["Makefile", "p2.pool.mk", "p2.nopool.mk"]
@@ -47,19 +47,23 @@ server.pid = cse303.do_cmd_a("Starting server:", [
     "Generating RSA keys as ("+server.keyfile+".pub, "+server.keyfile+".pri)",
     "File not found: " + server.dirfile], server.launchcmd())
 cse303.waitfor(2)
+expectsize = 0
 cse303.do_cmd("Registering a user", "___OK___", client.reg(alice), server)
+expectsize += (8 + 8 + cse303.next8(len(alice.name) + 8 + 16 + 8 + 32 + 8))
 cse303.after(server.pid) # need an extra cleanup to handle the KEY that was sent by first REG
 cse303.do_cmd("Setting key b1.", "___OK___", client.kvI(alice, "b1", fileb1), server)
+expectsize += cse303.next8(8 + 8 + 8 + len("b1") + cse303.get_len(fileb1))
 for i in range(4096):
     key = "k"+str(i)
     file = key + ".dat"
     cse303.build_file(file, 64)
     cse303.do_cmd("Setting key "+key+".", "___OK___", client.kvI(alice, key, file), server)
+    expectsize += cse303.next8(8 + 8 + 8 + len(key) + cse303.get_len(file))
 cse303.do_cmd("Persisting", "___OK___", client.persist(alice), server)
 cse303.do_cmd("Shutting down", "___OK___", client.bye(alice), server)
 cse303.await_server("Waiting for server to shut down.", "Server terminated", server)
 cse303.check_exist(server.dirfile, True)
-cse303.verify_filesize(server.dirfile, 347127+8+8+2+cse303.get_len(fileb1))
+cse303.verify_filesize(server.dirfile, expectsize)
 server.pid = cse303.do_cmd_a("Starting server:", [
     "Listening on port "+server.port+" using (key/data) = (rsa, "+server.dirfile+")",
     "Loaded: " + server.dirfile], server.launchcmd())
