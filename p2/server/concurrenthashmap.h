@@ -60,7 +60,16 @@ public:
   ///         existed in the table
   virtual bool insert(K key, V val, std::function<void()> on_success) {
     std::cout << "ConcurrentHashMap::insert() is not implemented";
-    return false;
+    // just putting in what I had for sequential maps
+    // https://stackoverflow.com/questions/22269435/how-to-iterate-through-a-list-of-objects-in-c
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      if (it->first == key)
+        return false;
+    } 
+    // insert key and value into list and fun on_success
+    entries.emplace(entries.begin(), key, val);
+    on_success();
+    return true;
   }
 
   /// Insert the provided key/value pair if there is no mapping for the key yet.
@@ -77,7 +86,19 @@ public:
   virtual bool upsert(K key, V val, std::function<void()> on_ins,
                       std::function<void()> on_upd) {
     std::cout << "ConcurrentHashMap::upsert() is not implemented";
-    return false;
+    // what is in sequential mapping
+    // Iterate through the list, and check the key value. If it matches with K, then replace the map
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      if (it->first == key) {
+        it->second = val;
+        on_upd();
+        return false; 
+      }
+    } 
+    // else insert values
+    on_ins();
+    entries.emplace(entries.begin(), key, val);
+    return true;
   }
 
   /// Apply a function to the value associated with a given key.  The function
@@ -90,7 +111,15 @@ public:
   ///         otherwise
   virtual bool do_with(K key, std::function<void(V &)> f) {
     std::cout << "ConcurrentHashMap::do_with() is not implemented";
-    return false;
+    // what is in sequential mapping
+     // Iterate through the list, and check the key value. If it matches with K, then do function
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      if (it->first == key) {
+        f(it->second);
+        return true;
+      }
+    }
+    return false; // key did not exist
   }
 
   /// Apply a function to the value associated with a given key.  The function
@@ -103,7 +132,15 @@ public:
   ///         otherwise
   virtual bool do_with_readonly(K key, std::function<void(const V &)> f) {
     std::cout << "ConcurrentHashMap::do_with_readonly() is not implemented";
-    return false;
+    // works for sequential mapping
+    // Iterate through the list, and check the key value. If it matches with K, then do function
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      if (it->first == key) {
+        f(it->second);
+        return true;
+      }
+    }
+    return false; // key did not exist
   }
 
   /// Remove the mapping from a key to its value
@@ -113,7 +150,15 @@ public:
   ///
   /// @return true if the key was found and the value unmapped, false otherwise
   virtual bool remove(K key, std::function<void()> on_success) {
+    // same as seqeuntial mapping
     std::cout << "ConcurrentHashMap::remove() is not implemented";
+    for (auto it=entries.begin(); it!=entries.end(); it++) {
+      if (it->first == key) {
+        entries.erase(it);
+        on_success();
+        return true;
+      }
+    } // no matched key
     return false;
   }
 
@@ -125,6 +170,13 @@ public:
   ///             useful for 2pl
   virtual void do_all_readonly(std::function<void(const K, const V &)> f,
                                std::function<void()> then) {
+    // same as seqeuntial
     std::cout << "ConcurrentHashMap::do_all_readonly() is not implemented";
+     // Iterate through the list, and check the key value. If it matches with K, then do function
+    for (auto it = entries.begin(); it != entries.end(); ++it) {
+      f(it->first, it->second);
+    }
+    // no idea what unlocking is so just call then
+    then();
   }
 };
