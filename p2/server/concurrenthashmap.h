@@ -44,7 +44,7 @@ public:
   /// @param _buckets The number of buckets
   ConcurrentHashMap(size_t _buckets) : numbuckets(_buckets)
   {
-    std::cout << "ConcurrentHashMap::ConcurrentHashMap() is not implemented";
+    //std::cout << "ConcurrentHashMap::ConcurrentHashMap() is not implemented";
     for (size_t i = 0; i < _buckets; i++) {
       // bucket_t* bucket = new bucket_t;
       // struct SmallM littleMap;
