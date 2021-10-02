@@ -276,12 +276,12 @@ public:
   virtual result_t kv_insert(const string &user, const string &pass,
                              const string &key, const vector<uint8_t> &val) { 
                                   
-    cout<<"insert called"<<endl;             
+    //cout<<"insert called"<<endl;             
     auto allow = this->auth(user, pass); //think about changing to tuple
     if (!allow.succeeded)  return result_t{false, RES_ERR_LOGIN, {}};
     
-    cout<<key<<endl;
-    cout<< val.size()<<endl;
+    //cout<<key<<endl;
+    //cout<< val.size()<<endl;
     if(kv_store->insert(key,val, [&](){})) return {true, RES_OK, {}}; 
     
     return {false, RES_ERR_KEY, {}};
@@ -303,7 +303,7 @@ public:
   virtual result_t kv_get(const string &user, const string &pass,
                           const string &key) {
                             
-    cout<<"get called"<<endl;
+    //cout<<"get called"<<endl;
     auto allow = this->auth(user, pass); 
     if (!allow.succeeded)  return result_t{false, RES_ERR_LOGIN, {}};
 
@@ -318,7 +318,7 @@ public:
       return result_t{false, RES_ERR_KEY, {}};
     }
 
-    return {true, RES_OK, {}};                         
+    return {true, RES_OK, {returnValue}};                         
     
     //cout << "my_storage.cc::kv_get() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
@@ -338,7 +338,7 @@ public:
   virtual result_t kv_delete(const string &user, const string &pass,
                              const string &key) {
                                
-    cout<<"delete called"<<endl;                          
+    //cout<<"delete called"<<endl;                          
     auto allow = this->auth(user, pass); //think about changing to tuple
     if (!allow.succeeded)  return result_t{false, RES_ERR_LOGIN, {}};
     if(this->kv_store->remove(key, [](){})) return {true, RES_OK, {}}; 
@@ -366,7 +366,7 @@ public:
   virtual result_t kv_upsert(const string &user, const string &pass,
                              const string &key, const vector<uint8_t> &val) {
                                
-  cout<<"upsert called"<<endl;
+  //cout<<"upsert called"<<endl;
   auto r = auth(user, pass);
   if (!r.succeeded)
     return {false, r.msg, {}};    
@@ -395,7 +395,7 @@ public:
     //assert(user.length() > 0);
     //assert(pass.length() > 0);
     //return {false, RES_ERR_UNIMPLEMENTED, {}};
-    cout<<"all called"<<endl;
+    //cout<<"all called"<<endl;
 
     auto allow = auth(user, pass);
     if (!allow.succeeded) return result_t{false, RES_ERR_LOGIN, {}};
@@ -420,7 +420,7 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
-    //cout << "my_storage.cc::shutdown() is not implemented\n";
+    cout << "my_storage.cc::shutdown() is not implemented\n";
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To
@@ -430,7 +430,16 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t save_file() {
-    cout<<"save called"<<endl;
+    //lock key value entry, write to file, close file, release lock
+    //file is atomic
+    //std::atomic<*FILE> storage_file (tempFileName.c_str(), "wb");
+    //std::atomic_flag winner = ATOMIC_FLAG_INIT;
+    //https://stackoverflow.com/questions/2333872/how-to-make-file-creation-an-atomic-operation
+    //do all read only, chain of lambdas, 2 maps and 1 file. each lalmbda takes two functions.
+    //https://cpp.hotexamples.com/examples/-/-/flock/cpp-flock-function-examples.html
+    //https://try2explore.com/questions/10419838
+    
+    //cout<<"save called"<<endl;
     string currentFileName = this->filename;
     string tempFileName = this->filename + ".tmp";
     FILE *storage_file = fopen(tempFileName.c_str(), "wb");
@@ -460,10 +469,9 @@ public:
       
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
     
-    },[](){});
+    },[&](){
 
-
-    kv_store->do_all_readonly ([&](string key, const vector<uint8_t> & value) {
+      kv_store->do_all_readonly ([&](string key, const vector<uint8_t> & value) {
 
       string padding = "\0";
       int bytesUsed=0;
@@ -483,6 +491,9 @@ public:
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
     
     },[](){});
+
+    });
+
     
   rename(tempFileName.c_str(), currentFileName.c_str());
     fclose(storage_file);
@@ -496,13 +507,94 @@ public:
   /// @return A result tuple, as described in storage.h.  Note that a
   ///         non-existent file is not an error.
   virtual result_t load_file() {
-    FILE *storage_file = fopen(filename.c_str(), "r");
-    if (storage_file == nullptr) {
-      return {true, "File not found: " + filename, {}};
-    }
+    //clear the tables first
+   //cout<<"entered load file"<<endl;
+    FILE *storage_file = fopen(filename.c_str(), "rb");
+    if (storage_file == nullptr)  return {true, "File not found: " + filename, {}};
+    this->auth_table->clear();
 
-    //cout << "my_storage.cc::load_file() is not implemented\n";
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    size_t userLen, saltLen, passLen, dataLen;
+    size_t keyLen, valLen;
+    string auth;
+    auth.resize(8);
+    string kv;
+    kv.resize(8);
+    string keyVec;
+
+    int bytesUsed=0;
+    bool cont = true;
+    if(auth.compare(AUTHENTRY) != 0) cont = false;
+    AuthTableEntry new_user;
+    int x;
+    fread(&auth[0],sizeof(char), 8, storage_file );
+
+    while(cont){
+      fread(&userLen,sizeof(size_t), 1, storage_file );
+      fread(&saltLen,sizeof(size_t), 1, storage_file );
+      fread(&passLen,sizeof(size_t), 1, storage_file );
+      fread(&dataLen,sizeof(size_t), 1, storage_file );
+
+      vector<uint8_t> usernameVec(userLen);
+      bytesUsed += fread(usernameVec.data(),sizeof(char), userLen, storage_file );
+      new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
+    
+      vector<uint8_t> saltVec(saltLen);
+      bytesUsed +=fread(saltVec.data(), sizeof(uint8_t), saltLen, storage_file );
+      new_user.salt.insert(new_user.salt.begin(), saltVec.begin(), saltVec.end());
+
+      vector<uint8_t> passVec(passLen);
+      bytesUsed +=fread(passVec.data(),sizeof(uint8_t), passLen, storage_file );
+      new_user.pass_hash.insert(new_user.pass_hash.begin(), passVec.begin(), passVec.end());
+
+      vector<uint8_t> profVec(dataLen);
+      bytesUsed +=fread(profVec.data(), sizeof(uint8_t), dataLen, storage_file );
+      new_user.content.insert(new_user.content.begin(), profVec.begin(), profVec.end());
+
+      auth ="";
+      fread(&auth[0],sizeof(char), 8, storage_file);
+      
+      auth ="";
+      fread(&auth[0],sizeof(char), (8-bytesUsed%8), storage_file);
+      bool check = auth_table->insert(new_user.username, new_user, [&]() {});     
+
+
+      // KV entry
+      kv ="";
+      fread(&kv[0],sizeof(char), 8, storage_file);
+
+      if(kv.compare(KVENTRY) == 0) {
+      cont = true;
+      }else{
+        break;
+        cont = false;
+      }
+
+      fread(&keyLen,sizeof(size_t), 1, storage_file );
+      fread(&valLen,sizeof(size_t), 1, storage_file );
+
+      keyVec = "";
+      keyVec.resize(keyLen);
+      bytesUsed = fread(&keyVec[0],sizeof(char), keyLen, storage_file );
+      //new_user.username.insert(new_user.username.begin(), keyVec.begin(), keyVec.end());
+    
+      vector<uint8_t> valVec(valLen);
+      bytesUsed +=fread(valVec.data(), sizeof(uint8_t), valLen, storage_file );
+      //new_user.salt.insert(new_user.salt.begin(), valVec.begin(), valVec.end())
+
+      check = kv_store->insert(keyVec, valVec, [&](){});
+      kv ="";
+      fread(&kv[0],sizeof(char), (8-bytesUsed%8), storage_file);
+
+      auth = "";
+      if(auth.compare(AUTHENTRY) == 0) {
+      cont = true;
+      }else{
+        cont = false;
+      }
+
+    }
+    fclose(storage_file);
+    return result_t{true, "Loaded: " + filename, {}};
   };
 };
 

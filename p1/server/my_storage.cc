@@ -202,7 +202,8 @@ public:
     {
       content = user.content;
     };
-    if ((this->auth_table->do_with_readonly(who, lamdaf)) == 0)
+    this->auth_table->do_with_readonly(who, lamdaf);
+    if (content.size()==0)
     {
       return result_t{false, RES_ERR_NO_DATA, {}};
     }
@@ -329,7 +330,6 @@ public:
 
       if (contentSize > 0) bytesUsed += fwrite(table.content.data(), sizeof(uint8_t), contentSize, storage_file);
       //int x = fwrite(&padding, sizeof(char), 8, storage_file);
-      
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
     
     },[](){});
@@ -355,32 +355,21 @@ public:
     this->auth_table->clear();
 
     size_t userLen, saltLen, passLen, dataLen;
-    vector<uint8_t> usernameVec;
-    vector<uint8_t> saltVec;
-    vector<uint8_t> passVec;
-    vector<uint8_t> profVec;
-
-    string user;
     string auth;
-    //string buffer;
+    auth.resize(8);
+    int bytesUsed=0;
     bool cont = true;
     //AuthTableEntry new_user;
 
     fread(&auth[0],sizeof(char), 8, storage_file );
 
-    //if(auth.compare(AUTHENTRY) != 0) cont = false;
+    if(auth.compare(AUTHENTRY) != 0) cont = false;
     //cout<<cont<<endl;
     //cout<<auth<<endl;
-
-    //usernameVec.reserve(userLen);
-    //saltVec.reserve(saltLen);
-    //passVec.reserve(passLen);
-    //profVec.reserve(dataLen);
     
-
    
     AuthTableEntry new_user;
-int x;
+    int x;
     while(cont){
       //cout<<"entered while loop"<<endl;
       fread(&userLen,sizeof(size_t), 1, storage_file );
@@ -388,54 +377,58 @@ int x;
       fread(&passLen,sizeof(size_t), 1, storage_file );
       fread(&dataLen,sizeof(size_t), 1, storage_file );
 
-      x = fread(&new_user.username[0],sizeof(char), userLen, storage_file );
-      cout<<x<<endl;
-      //usernameVec.insert(usernameVec.begin(), user.begin(), user.end());
-new_user.salt.reserve(saltLen);
-      x =fread(&(new_user.salt[0]), sizeof(uint8_t), saltLen, storage_file );
-      cout<<"nope"<<endl;
-      cout<<x<<endl;
-      //saltVec.insert(saltVec.begin(), buffer.begin(), buffer.end());
+      //usernameVec.reserve(userLen);
 
-new_user.pass_hash.reserve(passLen);
-      x =fread(new_user.pass_hash.data(),sizeof(uint8_t), passLen, storage_file );
-      cout<<x<<endl;
-      //passVec.insert(passVec.begin(), buffer.begin(), buffer.end());
-
-new_user.content.reserve(dataLen);
-      x =fread(new_user.content.data(), sizeof(uint8_t), dataLen, storage_file );
-      cout<<x<<endl;
-      //profVec.insert(profVec.begin(), buffer.begin(), buffer.end());
-
-      x =fread(&auth[0],sizeof(char), 8, storage_file);
-      cout<<x<<endl;
+      vector<uint8_t> usernameVec(userLen);
+      bytesUsed += fread(usernameVec.data(),sizeof(char), userLen, storage_file );
+      new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
       
-      if(auth.compare(AUTHENTRY) != 0) cont = false;
-      //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
-      //new_user.username = user;
-      //vector<uint8_t> saltVec(salt.begin(), salt.end());
-      //new_user.salt.insert(new_user.salt.begin(), saltVec.begin(), saltVec.end());
+      //cout<< new_user.username.length()<<endl;
+      //cout<<"user: ";
+      //cout<< usernameVec.size()<<endl;
+      //cout<<x<<endl;
 
-      //vector<uint8_t> profVec(profile.begin(), profile.end());
-      //new_user.content.insert(new_user.content.begin(), profVec.begin(), profVec.end());
+      vector<uint8_t> saltVec(saltLen);
+      bytesUsed +=fread(saltVec.data(), sizeof(uint8_t), saltLen, storage_file );
+      new_user.salt.insert(new_user.salt.begin(), saltVec.begin(), saltVec.end());
 
-      //vector<uint8_t> passVec(pass.begin(), pass.end());
-      //new_user.pass_hash.insert(new_user.pass_hash.begin(), passVec.begin(), passVec.end());
+      //cout<< new_user.salt.size()<<endl;
+      //cout<<"salt: ";
+      //cout<< saltVec.size()<<endl;
+      //cout<<x<<endl;
 
-      cout<<"loadfile"<<endl;
-      cout<<userLen<<endl;
-      cout<<new_user.username.length()<<endl;
+      vector<uint8_t> passVec(passLen);
+      bytesUsed +=fread(passVec.data(),sizeof(uint8_t), passLen, storage_file );
+      new_user.pass_hash.insert(new_user.pass_hash.begin(), passVec.begin(), passVec.end());
 
-      cout<<saltLen<<endl;
-      cout<<new_user.salt.size()<<endl;
+      //cout<< new_user.pass_hash.size()<<endl;
+      //cout<<"pass_hash: ";
+      //cout<< passVec.size()<<endl;
+      //cout<<x<<endl;
 
-      cout<<passLen<<endl;
-      cout<<new_user.pass_hash.size()<<endl;
+      vector<uint8_t> profVec(dataLen);
+      bytesUsed +=fread(profVec.data(), sizeof(uint8_t), dataLen, storage_file );
+      new_user.content.insert(new_user.content.begin(), profVec.begin(), profVec.end());
 
-      cout<<dataLen<<endl;
-      cout<<new_user.content.size()<<endl;
+      //cout<< new_user.content.size()<<endl;
+      //cout<<"content: ";
+      //cout<< profVec.size()<<endl;
+      //cout<<x<<endl;
+      auth ="";
+      fread(&auth[0],sizeof(char), 8, storage_file);
 
-      bool check = auth_table->insert(user, new_user, [&]() {});
+            //if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
+
+      //cout<<auth.compare(AUTHENTRY)<<endl;
+      if(auth.compare(AUTHENTRY) == 0) {
+      cont = true;
+      }else{
+        cont = false;
+      }
+
+      fread(&auth[0],sizeof(char), (8-bytesUsed%8), storage_file);
+      //fread(&auth[0],sizeof(char), 8, storage_file);
+      bool check = auth_table->insert(new_user.username, new_user, [&]() {});
       //cout<<"we got to here!"<<endl;
       
     }
