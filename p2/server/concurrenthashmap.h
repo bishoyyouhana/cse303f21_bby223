@@ -44,7 +44,7 @@ public:
   /// @param _buckets The number of buckets
   ConcurrentHashMap(size_t _buckets) : numbuckets(_buckets)
   {
-    std::cout << "ConcurrentHashMap::ConcurrentHashMap() is not implemented";
+    // std::cout << "ConcurrentHashMap::ConcurrentHashMap() is not implemented";
     for (size_t i = 0; i < _buckets; i++) {
       // bucket_t* bucket = new bucket_t;
       // struct SmallM littleMap;
@@ -60,7 +60,7 @@ public:
     * Also free the space by deallocating the map.
     */
     clear();
-    for(auto i = 0; i < numbuckets; i++)
+    for(size_t i = 0; i < numbuckets; i++)
       delete bigBuckets.at(i);
     //std::cout << "ConcurrentHashMap::~ConcurrentHashMap() is not implemented";
   }
@@ -68,13 +68,13 @@ public:
   /// Clear the map.  This operation needs to use 2pl
   virtual void clear() {
     // lock with mutex
-    for(auto i = 0; i < numbuckets; i++)
+    for(size_t i = 0; i < numbuckets; i++)
       bigBuckets.at(i)->lock.lock();
     // clear each list per bucket
-    for(auto i = 0; i < numbuckets; i++)
+    for(size_t i = 0; i < numbuckets; i++)
       bigBuckets.at(i)->entries.clear(); 
     // unlock with mutex
-    for(auto i = 0; i < numbuckets; i++)
+    for(size_t i = 0; i < numbuckets; i++)
       bigBuckets.at(i)->lock.unlock();
 
     // std::cout << "ConcurrentHashMap::clear() is not implemented";
@@ -226,10 +226,10 @@ public:
                                std::function<void()> then) {
     // std::cout << "ConcurrentHashMap::do_all_readonly() is not implemented";
     // lock with mutex
-    for(auto i = 0; i < numbuckets; i++)
+    for(size_t i = 0; i < numbuckets; i++)
       bigBuckets.at(i)->lock.lock();
      // Iterate through the list, and check the key value. If it matches with K, then do function
-    for(auto i = 0; i < numbuckets; i++) {
+    for(size_t i = 0; i < numbuckets; i++) {
       for (auto it = bigBuckets.at(i)->entries.begin(); it != bigBuckets.at(i)->entries.end(); ++it) {
         f(it->first, it->second);
       }
@@ -237,7 +237,7 @@ public:
     // apply before unlock and after function apply
     then(); 
     // unlock with mutex
-    for(auto i = 0; i < numbuckets; i++)
+    for(size_t i = 0; i < numbuckets; i++)
       bigBuckets.at(i)->lock.unlock();
   }
 };
