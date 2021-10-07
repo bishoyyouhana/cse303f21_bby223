@@ -420,7 +420,7 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
-    cout << "my_storage.cc::shutdown() is not implemented\n";
+    //cout << "my_storage.cc::shutdown() is not implemented\n";
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To

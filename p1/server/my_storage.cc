@@ -79,7 +79,7 @@ public:
     SHA256_Update(&sha256, toHash.data(), toHash.size());
     SHA256_Final(hash.data(), &sha256);
 
-    //cout << hash.size()<<endl; 
+    cout << hash.size()<<endl; 
 
     return hash;
   }
@@ -156,7 +156,7 @@ public:
     //cout << "my_storage.cc::set_user_data() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
 
-    auto allow = this->auth(user, pass); //think about changing to tuple
+    auto allow = auth(user, pass); //think about changing to tuple
     if (!allow.succeeded)
     {
       return result_t{false, RES_ERR_LOGIN, {}};
@@ -260,7 +260,7 @@ public:
     // NB: These asserts are to prevent compiler warnings
     //bool boolean;
     string authUser;
-    vector<uint8_t> hashPass;
+    vector<uint8_t> hashPass(LEN_PASSHASH);//LEN_PASSWORD
     vector<uint8_t> saltVec(LEN_SALT);
 
     //retrieving necessary data
@@ -277,6 +277,12 @@ public:
     this->auth_table->do_with_readonly(user, lamdaF);
 
     vector<uint8_t> passVec = hash_pass(pass, saltVec);
+
+    //cout<<saltVec.size()<<endl;
+    
+    //cout<<hashPass.size()<<endl;
+    //cout<<pass<<endl;
+    //cout<<user<<endl;
 
     if (passVec == hashPass) //will this work?
     {
@@ -319,6 +325,19 @@ public:
       size_t hashSize = table.pass_hash.size();
       size_t contentSize = table.content.size();
 
+      /*
+      cout<<"savefile"<<endl;
+
+      cout<<userSize<<endl;
+      cout<<saltSize<<endl;
+      cout<<hashSize<<endl;
+      cout<<contentSize<<endl;
+      cout<<table.username.c_str()<<endl;
+      cout<<table.salt.data()<<endl;
+      cout<<table.pass_hash.data()<<endl;
+      cout<<table.content.data()<<endl;
+*/
+
       fwrite(&userSize, sizeof(size_t), 1, storage_file);
       fwrite(&saltSize, sizeof(size_t), 1, storage_file);
       fwrite(&hashSize, sizeof(size_t), 1, storage_file);
@@ -330,7 +349,8 @@ public:
 
       if (contentSize > 0) bytesUsed += fwrite(table.content.data(), sizeof(uint8_t), contentSize, storage_file);
       //int x = fwrite(&padding, sizeof(char), 8, storage_file);
-      if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
+      if((bytesUsed%8) >0) fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
+      //cout<<bytesUsed<<endl;
     
     },[](){});
     
@@ -371,7 +391,8 @@ public:
     AuthTableEntry new_user;
     int x;
     while(cont){
-      //cout<<"entered while loop"<<endl;
+      bytesUsed =0;
+      //cout<<"load"<<endl;
       fread(&userLen,sizeof(size_t), 1, storage_file );
       fread(&saltLen,sizeof(size_t), 1, storage_file );
       fread(&passLen,sizeof(size_t), 1, storage_file );
@@ -426,11 +447,21 @@ public:
         cont = false;
       }
 
-      fread(&auth[0],sizeof(char), (8-bytesUsed%8), storage_file);
+      if((bytesUsed%8)>0) fread(&auth[0],sizeof(char), (8-bytesUsed%8), storage_file);
       //fread(&auth[0],sizeof(char), 8, storage_file);
       bool check = auth_table->insert(new_user.username, new_user, [&]() {});
       //cout<<"we got to here!"<<endl;
-      
+      /*
+      cout<<userLen<<endl;
+      cout<<saltLen<<endl;
+      cout<<passLen<<endl;
+      cout<<dataLen<<endl;
+      cout<<usernameVec.data()<<endl;
+      cout<<saltVec.data()<<endl;
+      cout<<passVec.data()<<endl;
+      cout<<profVec.data()<<endl;
+      cout<<bytesUsed<<endl;
+      */
     }
 
     fclose(storage_file);

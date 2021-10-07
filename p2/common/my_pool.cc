@@ -57,7 +57,6 @@ public:
     //cout << "my_pool::set_shutdown_handler() is not implemented";
     // shutdown each thread, this should be empty as there is no shutdown handler yet
     // apply the function
-    func();
   }
 
   /// Allow a user of the pool to see if the pool has been shut down
