@@ -36,6 +36,8 @@ public:
   ///
   /// @param sd The socket descriptor for the new connection
   virtual void service_connection(int sd) = 0;
+
+  virtual void useHandler() = 0;
 };
 
 /// pool_factory creates a pool object that can serve as a thread pool
