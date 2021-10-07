@@ -34,22 +34,18 @@ template <typename K, typename V> class ConcurrentHashMap : public Map<K, V> {
     std::list<std::pair<K, V>> entries;
     std::mutex lock;
   };
+  // number of buckets needed
   size_t numbuckets;
+  // name of concurrent hashmap
   std::vector<bucket_t*> bigBuckets;
-  //std::vector<Maps> bigMap;
-  // std::vector<SmallM> bigMap;
 public:
   /// Construct by specifying the number of buckets it should have
   ///
   /// @param _buckets The number of buckets
   ConcurrentHashMap(size_t _buckets) : numbuckets(_buckets)
   {
-    // std::cout << "ConcurrentHashMap::ConcurrentHashMap() is not implemented";
-    //std::cout << "ConcurrentHashMap::ConcurrentHashMap() is not implemented";
+    // populate the concurrent hashmap with new bucket_t
     for (size_t i = 0; i < _buckets; i++) {
-      // bucket_t* bucket = new bucket_t;
-      // struct SmallM littleMap;
-      //bucket.
       bigBuckets.emplace_back(new bucket_t());
     } 
   }
@@ -63,7 +59,6 @@ public:
     clear();
     for(size_t i = 0; i < numbuckets; i++)
       delete bigBuckets.at(i);
-    //std::cout << "ConcurrentHashMap::~ConcurrentHashMap() is not implemented";
   }
 
   /// Clear the map.  This operation needs to use 2pl
@@ -77,8 +72,6 @@ public:
     // unlock with mutex
     for(size_t i = 0; i < numbuckets; i++)
       bigBuckets.at(i)->lock.unlock();
-
-    // std::cout << "ConcurrentHashMap::clear() is not implemented";
   }
 
   /// Insert the provided key/value pair only if there is no mapping for the key
@@ -91,7 +84,6 @@ public:
   /// @return true if the key/value was inserted, false if the key already
   ///         existed in the table
   virtual bool insert(K key, V val, std::function<void()> on_success) {
-    // std::cout << "ConcurrentHashMap::insert() is not implemented";
     // https://stackoverflow.com/questions/22269435/how-to-iterate-through-a-list-of-objects-in-c
     // find what bucket to put key and value in
     size_t bucket = std::hash<K>{}(key) % numbuckets;
@@ -124,8 +116,6 @@ public:
   ///         existed in the table and was thus updated instead
   virtual bool upsert(K key, V val, std::function<void()> on_ins,
                       std::function<void()> on_upd) {
-    // std::cout << "ConcurrentHashMap::upsert() is not implemented";
-    // Iterate through the list, and check the key value. If it matches with K, then replace the map
     // find what bucket to put key and value in
     size_t bucket = std::hash<K>{}(key) % numbuckets;
     // lock the bucket using a guard
@@ -153,8 +143,6 @@ public:
   /// @return true if the key existed and the function was applied, false
   ///         otherwise
   virtual bool do_with(K key, std::function<void(V &)> f) {
-    // std::cout << "ConcurrentHashMap::do_with() is not implemented";
-    // Iterate through the list, and check the key value. If it matches with K, then do function
     // find what bucket to put key and value in
     size_t bucket = std::hash<K>{}(key) % numbuckets;
     // lock the bucket using a guard
@@ -178,8 +166,6 @@ public:
   /// @return true if the key existed and the function was applied, false
   ///         otherwise
   virtual bool do_with_readonly(K key, std::function<void(const V &)> f) {
-    // std::cout << "ConcurrentHashMap::do_with_readonly() is not implemented";
-    // Iterate through the list, and check the key value. If it matches with K, then do function
     // find what bucket to put key and value in
     size_t bucket = std::hash<K>{}(key) % numbuckets;
     // lock the bucket using a guard
@@ -201,7 +187,6 @@ public:
   ///
   /// @return true if the key was found and the value unmapped, false otherwise
   virtual bool remove(K key, std::function<void()> on_success) {
-    // std::cout << "ConcurrentHashMap::remove() is not implemented";
     // find what bucket to put key and value in
     size_t bucket = std::hash<K>{}(key) % numbuckets;
     // lock the bucket using a guard
@@ -225,7 +210,6 @@ public:
   ///             useful for 2pl
   virtual void do_all_readonly(std::function<void(const K, const V &)> f,
                                std::function<void()> then) {
-    // std::cout << "ConcurrentHashMap::do_all_readonly() is not implemented";
     // lock with mutex
     for(size_t i = 0; i < numbuckets; i++)
       bigBuckets.at(i)->lock.lock();

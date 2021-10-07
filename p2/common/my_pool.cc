@@ -11,10 +11,9 @@
 using namespace std;
 
 class my_pool : public thread_pool {
-  // create place holders for pool and queue
-  // make an array of threads :D
+  // create a queue of socket descriptors
   std::queue<int> socketQueue;
-  // if ( socketQueue.empty()) {};
+  // make an array of threads :D
   std::thread *pool;
   // also make a lock for the queue
   std::mutex lock;
@@ -24,6 +23,10 @@ class my_pool : public thread_pool {
   std::condition_variable cv;
   // variable to get number of threads
   std::atomic<int> numThreads;
+  // function to do when main thread wants to shutdown
+  function<void()> shutdownTask = [](){};
+  // function to do when when the thread needs to handle something
+  function<bool(int)> hand;
 public:
   
   /// construct a thread pool by providing a size and the function to run on
@@ -31,16 +34,13 @@ public:
   ///
   /// @param size    The number of threads in the pool
   /// @param handler The code to run whenever something arrives in the pool
-  my_pool(int size, function<bool(int)> handler) : numThreads(size) {
-    // lock to make the thread pool
-    // lock.lock();
+  my_pool(int size, function<bool(int)> handler) : numThreads(size),hand(handler) {
     // construct  a pool
-    std::thread *pool[size];
-    // make the handler lambda to be used by thread
-    auto func = [&]() { useHandler(handler); };
-    // need to construct queue of ints for sockets
+    pool = new std::thread[size];
+    // populate the pool with threads 
     for (int i = 0; i < size; i++) {
-      pool[i] = new std::thread(func);
+      std::lock_guard<std::mutex> sync(lock);
+      pool[i] = std::thread([&](){ useHandler(); });
     }
     // constructed thread pool is active
     active = true;
@@ -54,23 +54,23 @@ public:
   ///
   /// @param func The code that should be run when the pool shuts down
   virtual void set_shutdown_handler(function<void()> func) {
-    //cout << "my_pool::set_shutdown_handler() is not implemented";
-    // shutdown each thread, this should be empty as there is no shutdown handler yet
-    // apply the function
+    // save function and call it in handler
+    shutdownTask = func;
   }
 
   /// Allow a user of the pool to see if the pool has been shut down
   virtual bool check_active() {
-    // cout << "my_pool::check_active() is not implemented";
     return active;
   }
 
   /// Shutting down the pool can take some time.  await_shutdown() lets a user
   /// of the pool wait until the threads are all done servicing clients.
   virtual void await_shutdown() {
-    // cout << "my_pool::await_shutdown() is not implemented";
-    // check if all of the threads are waiting.
-    // if they are, commence shutdown
+    // wake all threads up
+    lock.lock();
+    cv.notify_all();
+    lock.unlock();
+    // join the threads 
     for (int i = 0; i < numThreads; i++) {
       pool[i].join();
     }
@@ -83,52 +83,42 @@ public:
   virtual void service_connection(int sd) {
     // pass the sd into queue, waiting threads will wake and grab sd
     // send a signal to thread pool
-    // cout << "my_pool::service_connection() is not implemented";
     if (check_active()) { // if there is no shutdown coming
       std::lock_guard<std::mutex> sync(lock);
       socketQueue.push(sd);
+      // signal the waiting threads to new signal
+      cv.notify_one();
     }
-    // signal all of the waiting threads to new signal
-    cv.notify_all();
   }
 
-  // new function to use handler
-  virtual void useHandler(function<bool(int)> handler) {
+  /// new function to use handler
+  /// makes the thread wait if there are no processes to capture
+  /// If there are sd in the queue, handle them and do shutdown if necessary
+  virtual void useHandler() {
     std::atomic<int> sd = 0;
     while(true) {
       // lock the queue
       std::unique_lock<std::mutex> lk(lock);
+      // if shutdown, do shutdown :)
+      if (active == false)
+        break;
       if (socketQueue.empty()) { // no sd in the queue
         // wait https://en.cppreference.com/w/cpp/thread/condition_variable/wait
         cv.wait(lk);
-        continue;
       }
       else if (!socketQueue.empty()) { // there are sd
         // get the sd at the front of queue
         sd = socketQueue.front();
         socketQueue.pop();
-        break;
+        bool handled = hand(sd);
+        if (handled == true) { // shutdown activated
+          active = false;
+          // set shutdown handle
+          shutdownTask();
+        }
+        close(sd);
       }
-    }
-    // now use handler as you have sd
-    bool handled = handler(sd);
-    if (handled == false) {
-      // then there is no need to shutdown
-    }
-    else {
-      // do shutdown
-      // change active to false
-      active = false;
-      // set shutdown handle
-      auto lambda = [](){};
-      set_shutdown_handler(lambda);
-      // can't let the main thread accept anymore sd
-      // then wait for rest of thread to finish processes 
-      while (!socketQueue.empty()) {
-        std::unique_lock<std::mutex> lk(lock);
-        
-      }
-      // delete the queue and make sure all threads are waiting
+      lk.unlock();
     }
   }
 };
