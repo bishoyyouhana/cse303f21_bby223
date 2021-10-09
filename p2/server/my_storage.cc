@@ -444,11 +444,18 @@ public:
     string tempFileName = this->filename + ".tmp";
     FILE *storage_file = fopen(tempFileName.c_str(), "wb");
 
+    vector<uint8_t> AUTHEN(8);
+    //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
+    AUTHEN.insert(AUTHEN.begin(),AUTHENTRY.begin(), AUTHENTRY.end());
+
+    vector<uint8_t> kv(8);
+    kv.insert(kv.begin(),KVENTRY.begin(), KVENTRY.end());
+
     auth_table->do_all_readonly ([&](string , const AuthTableEntry table) {
 
       string padding = "\0";
       int bytesUsed=0;
-      fwrite(AUTHENTRY.c_str(), AUTHENTRY.length(), 1, storage_file);
+      fwrite(AUTHEN.data(), sizeof(char), AUTHENTRY.length(), storage_file);
 
       size_t userSize = table.username.length();
       size_t saltSize = table.salt.size();
@@ -460,7 +467,10 @@ public:
       fwrite(&hashSize, sizeof(size_t), 1, storage_file);
       fwrite(&contentSize, sizeof(size_t), 1, storage_file);
 
-      bytesUsed += fwrite(table.username.c_str(), sizeof(char), userSize, storage_file);
+      vector<uint8_t> usernameVec(userSize);
+      usernameVec.insert(usernameVec.begin(), table.username.begin(), table.username.end());
+      bytesUsed += fwrite(usernameVec.data(),sizeof(char), userSize, storage_file );
+
       bytesUsed+= fwrite(table.salt.data(), sizeof(uint8_t), saltSize, storage_file);
       bytesUsed += fwrite(table.pass_hash.data(), sizeof(uint8_t), hashSize, storage_file);
 
@@ -475,7 +485,8 @@ public:
 
       string padding = "\0";
       int bytesUsed=0;
-      fwrite(KVENTRY.c_str(), KVENTRY.length(), 1, storage_file);
+      //auth.clear();
+      fwrite(kv.data(),sizeof(char), 8, storage_file);
 
       size_t keySize = key.length();
       size_t valSize = value.size();
@@ -483,7 +494,10 @@ public:
       fwrite(&keySize, sizeof(size_t), 1, storage_file);
       fwrite(&valSize, sizeof(size_t), 1, storage_file);
 
-      bytesUsed += fwrite(key.c_str(), sizeof(char), keySize, storage_file);
+      vector<uint8_t> keyV(keySize);
+      keyV.insert(keyV.begin(), key.begin(), key.end());
+
+      bytesUsed += fwrite(keyV.data(), sizeof(char), keySize, storage_file);
       bytesUsed+= fwrite(value.data(), sizeof(uint8_t), valSize, storage_file);
 
       //int x = fwrite(&padding, sizeof(char), 8, storage_file);
@@ -515,24 +529,32 @@ public:
 
     size_t userLen, saltLen, passLen, dataLen;
     size_t keyLen, valLen;
-    string auth;
-    auth.resize(8);
-    string kv;
-    kv.resize(8);
-    string keyVec;
+  
 
     int bytesUsed=0;
     bool cont = true;
-    if(auth.compare(AUTHENTRY) != 0) cont = false;
-    AuthTableEntry new_user;
-    int x;
-    fread(&auth[0],sizeof(char), 8, storage_file );
+    int x = 0; //just to prevent errors
+
+    vector<uint8_t> AUTHEN(8);
+    //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
+    AUTHEN.insert(AUTHEN.begin(),AUTHENTRY.begin(), AUTHENTRY.end());
+
+    vector<uint8_t> kvkv(8);
+    //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
+    kvkv.insert(kvkv.begin(),KVENTRY.begin(), KVENTRY.end());
+
+    //AuthTableEntry new_user;
+    vector<uint8_t> auth(8);
+    x=fread(auth.data(),sizeof(char), 8, storage_file );
+  
 
     while(cont){
-      fread(&userLen,sizeof(size_t), 1, storage_file );
-      fread(&saltLen,sizeof(size_t), 1, storage_file );
-      fread(&passLen,sizeof(size_t), 1, storage_file );
-      fread(&dataLen,sizeof(size_t), 1, storage_file );
+      AuthTableEntry new_user;
+      bytesUsed =0;
+      x=fread(&userLen,sizeof(size_t), 1, storage_file );
+      x=fread(&saltLen,sizeof(size_t), 1, storage_file );
+      x=fread(&passLen,sizeof(size_t), 1, storage_file );
+      x=fread(&dataLen,sizeof(size_t), 1, storage_file );
 
       vector<uint8_t> usernameVec(userLen);
       bytesUsed += fread(usernameVec.data(),sizeof(char), userLen, storage_file );
@@ -547,51 +569,47 @@ public:
       new_user.pass_hash.insert(new_user.pass_hash.begin(), passVec.begin(), passVec.end());
 
       vector<uint8_t> profVec(dataLen);
-      bytesUsed +=fread(profVec.data(), sizeof(uint8_t), dataLen, storage_file );
-      new_user.content.insert(new_user.content.begin(), profVec.begin(), profVec.end());
-
-      auth ="";
-      fread(&auth[0],sizeof(char), 8, storage_file);
-      
-      auth ="";
-      fread(&auth[0],sizeof(char), (8-bytesUsed%8), storage_file);
-      bool check = auth_table->insert(new_user.username, new_user, [&]() {});     
-
-
-      // KV entry
-      kv ="";
-      fread(&kv[0],sizeof(char), 8, storage_file);
-
-      if(kv.compare(KVENTRY) == 0) {
-      cont = true;
+      if(dataLen>0){   
+        bytesUsed +=fread(profVec.data(), sizeof(uint8_t), dataLen, storage_file );
+        new_user.content.insert(new_user.content.begin(), profVec.begin(), profVec.end());
       }else{
-        break;
-        cont = false;
+        new_user.content.reserve(0);
       }
 
-      fread(&keyLen,sizeof(size_t), 1, storage_file );
-      fread(&valLen,sizeof(size_t), 1, storage_file );
+      vector<uint8_t> buffer(8);
+      if((bytesUsed%8)>0) x=fread(buffer.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+      
+      bool check = auth_table->insert(new_user.username, new_user, [&]() {});     
+      bytesUsed =0;
 
-      keyVec = "";
-      keyVec.resize(keyLen);
-      bytesUsed = fread(&keyVec[0],sizeof(char), keyLen, storage_file );
-      //new_user.username.insert(new_user.username.begin(), keyVec.begin(), keyVec.end());
-    
+      if(!check){
+        return result_t{false, RES_ERR_SERVER, {}};
+      }
+      
+      // KV entry
+      vector<uint8_t> kv(8);
+      x=fread(kv.data(),sizeof(char), 8, storage_file);
+      x=fread(&keyLen,sizeof(size_t), 1, storage_file );
+      x=fread(&valLen,sizeof(size_t), 1, storage_file );
+
+      vector<uint8_t> keyVec(keyLen);
+      bytesUsed += fread(keyVec.data(),sizeof(char), keyLen, storage_file );
+
       vector<uint8_t> valVec(valLen);
       bytesUsed +=fread(valVec.data(), sizeof(uint8_t), valLen, storage_file );
-      //new_user.salt.insert(new_user.salt.begin(), valVec.begin(), valVec.end())
 
-      check = kv_store->insert(keyVec, valVec, [&](){});
-      kv ="";
-      fread(&kv[0],sizeof(char), (8-bytesUsed%8), storage_file);
+      std::string str(keyVec.begin(), keyVec.end());
+      check = kv_store->insert(str, valVec, [&](){});
 
-      auth = "";
-      if(auth.compare(AUTHENTRY) == 0) {
+      x=fread(buffer.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+      x=fread(auth.data(),sizeof(char), 8, storage_file );
+      bytesUsed += x;
+
+      if(equal(AUTHEN.begin(), AUTHEN.end(), auth.begin())) {
       cont = true;
       }else{
         cont = false;
       }
-
     }
     fclose(storage_file);
     return result_t{true, "Loaded: " + filename, {}};
