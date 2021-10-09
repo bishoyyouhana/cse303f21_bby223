@@ -79,7 +79,7 @@ public:
     SHA256_Update(&sha256, toHash.data(), toHash.size());
     SHA256_Final(hash.data(), &sha256);
 
-    cout << hash.size()<<endl; 
+    //cout << hash.size()<<endl; 
 
     return hash;
   }
@@ -164,7 +164,7 @@ public:
 
     auto lambdaF = [&](AuthTableEntry &user)
     {
-      user.content = content;
+      if(content.size()>0) user.content = content;
     };
 
     //AuthTableEntry new_user;
@@ -314,11 +314,16 @@ public:
     string tempFileName = this->filename + ".tmp";
     FILE *storage_file = fopen(tempFileName.c_str(), "wb");
 
+    vector<uint8_t> AUTHEN(8);
+    //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
+    AUTHEN.insert(AUTHEN.begin(),AUTHENTRY.begin(), AUTHENTRY.end());
+
+
     auth_table->do_all_readonly ([&](string , const AuthTableEntry table) {
 
-      string padding = "\0";
+      char padding = '\0';
       int bytesUsed=0;
-      fwrite(AUTHENTRY.c_str(), AUTHENTRY.length(), 1, storage_file);
+      fwrite(AUTHEN.data(), sizeof(char), AUTHENTRY.length(), storage_file);
 
       size_t userSize = table.username.length();
       size_t saltSize = table.salt.size();
@@ -326,7 +331,7 @@ public:
       size_t contentSize = table.content.size();
 
       /*
-      cout<<"savefile"<<endl;
+      cout<<"savefile"<<endl;  
 
       cout<<userSize<<endl;
       cout<<saltSize<<endl;
@@ -335,7 +340,7 @@ public:
       cout<<table.username.c_str()<<endl;
       cout<<table.salt.data()<<endl;
       cout<<table.pass_hash.data()<<endl;
-      cout<<table.content.data()<<endl;
+      //cout<<table.content.data()<<endl;
 */
 
       fwrite(&userSize, sizeof(size_t), 1, storage_file);
@@ -343,7 +348,11 @@ public:
       fwrite(&hashSize, sizeof(size_t), 1, storage_file);
       fwrite(&contentSize, sizeof(size_t), 1, storage_file);
 
-      bytesUsed += fwrite(table.username.c_str(), sizeof(char), userSize, storage_file);
+      vector<uint8_t> usernameVec(userSize);
+      usernameVec.insert(usernameVec.begin(), table.username.begin(), table.username.end());
+      bytesUsed += fwrite(usernameVec.data(),sizeof(char), userSize, storage_file );
+
+      //bytesUsed += fwrite(table.username.c_str(), sizeof(char), userSize, storage_file);
       bytesUsed+= fwrite(table.salt.data(), sizeof(uint8_t), saltSize, storage_file);
       bytesUsed += fwrite(table.pass_hash.data(), sizeof(uint8_t), hashSize, storage_file);
 
@@ -375,22 +384,31 @@ public:
     this->auth_table->clear();
 
     size_t userLen, saltLen, passLen, dataLen;
-    string auth;
-    auth.resize(8);
+    //string auth="";
+    //string buffer="";
+    //auth.resize(8);
+    //buffer.resize(8);
     int bytesUsed=0;
     bool cont = true;
+
+    vector<uint8_t> AUTHEN(8);
+    //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
+    AUTHEN.insert(AUTHEN.begin(),AUTHENTRY.begin(), AUTHENTRY.end());
+
     //AuthTableEntry new_user;
+    vector<uint8_t> auth(8);
+    fread(auth.data(),sizeof(char), 8, storage_file );
 
-    fread(&auth[0],sizeof(char), 8, storage_file );
-
-    if(auth.compare(AUTHENTRY) != 0) cont = false;
+    //if(auth.compare(AUTHENTRY) != 0) cont = false;
     //cout<<cont<<endl;
     //cout<<auth<<endl;
     
    
-    AuthTableEntry new_user;
+  
     int x;
+    int i=0;
     while(cont){
+      AuthTableEntry new_user;
       bytesUsed =0;
       //cout<<"load"<<endl;
       fread(&userLen,sizeof(size_t), 1, storage_file );
@@ -428,40 +446,69 @@ public:
       //cout<<x<<endl;
 
       vector<uint8_t> profVec(dataLen);
-      bytesUsed +=fread(profVec.data(), sizeof(uint8_t), dataLen, storage_file );
-      new_user.content.insert(new_user.content.begin(), profVec.begin(), profVec.end());
+      if(dataLen>0){   
+        bytesUsed +=fread(profVec.data(), sizeof(uint8_t), dataLen, storage_file );
+        new_user.content.insert(new_user.content.begin(), profVec.begin(), profVec.end());
+      }else{
+        new_user.content.reserve(0);
+      }
 
       //cout<< new_user.content.size()<<endl;
       //cout<<"content: ";
       //cout<< profVec.size()<<endl;
       //cout<<x<<endl;
-      auth ="";
-      fread(&auth[0],sizeof(char), 8, storage_file);
+
+      vector<uint8_t> buffer(8);
+      //buffer.clear();
+      if((bytesUsed%8)>0) fread(buffer.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+      //fread(&auth[0],sizeof(char), 8, storage_file);
+      bool check = auth_table->insert(new_user.username, new_user, [&]() {});
+      //cout<<"we got to here!"<<endl;
+      //cout<<"loooooooooooooooooooooooooooooooop"<<endl;
+      //cout<<buffer.size()<<endl;
+      //cout<<buffer.data()<<endl;
+
+      vector<uint8_t> auth(8);
+      //auth.clear();
+      fread(auth.data(),sizeof(char), 8, storage_file);
 
             //if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
 
       //cout<<auth.compare(AUTHENTRY)<<endl;
-      if(auth.compare(AUTHENTRY) == 0) {
+      if(equal(AUTHEN.begin(), AUTHEN.end(), auth.begin())) {
       cont = true;
       }else{
         cont = false;
       }
-
-      if((bytesUsed%8)>0) fread(&auth[0],sizeof(char), (8-bytesUsed%8), storage_file);
-      //fread(&auth[0],sizeof(char), 8, storage_file);
-      bool check = auth_table->insert(new_user.username, new_user, [&]() {});
-      //cout<<"we got to here!"<<endl;
+      //cout<<"loadfile"<<endl;
+      //cout<<AUTHEN ==auth <<endl;
       /*
-      cout<<userLen<<endl;
+      bool result = std::equal(AUTHEN.begin(), AUTHEN.end(), auth.begin());
+      cout<<result<<endl;
+      cout<<cont<<endl;
+      cout<<AUTHEN.data()<<endl;
+      cout<<auth.data()<<endl;
+      cout<<auth.size()<<endl;
+*/
+      
+      //cout<<"-----------------------------"<<endl;      
+      /*
+    cout<<userLen<<endl;
       cout<<saltLen<<endl;
       cout<<passLen<<endl;
       cout<<dataLen<<endl;
       cout<<usernameVec.data()<<endl;
+      cout<<usernameVec.size()<<endl;
       cout<<saltVec.data()<<endl;
+      cout<<saltVec.size()<<endl;
       cout<<passVec.data()<<endl;
-      cout<<profVec.data()<<endl;
-      cout<<bytesUsed<<endl;
-      */
+      cout<<passVec.size()<<endl;
+      //cout<<profVec.data()<<endl;
+      cout<<profVec.size()<<endl;
+      cout<<bytesUsed<<endl;*/
+      
+      i++;
+      
     }
 
     fclose(storage_file);
