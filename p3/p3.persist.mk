@@ -12,9 +12,9 @@ CLIENT_PROVIDED = client requests crypto err file net my_crypto
 
 # Names for building the server
 SERVER_MAIN     = server
-SERVER_CXX      = my_storage persist concurrenthashmap_factories
+SERVER_CXX      = my_storage persist 
 SERVER_COMMON   = 
-SERVER_PROVIDED = server responses parsing crypto err file net my_pool my_crypto
+SERVER_PROVIDED = server responses parsing crypto err file net my_pool my_crypto concurrenthashmap_factories
 
 # Names for building the benchmark executable
 BENCH_MAIN = # No benchmarks are built by this build
