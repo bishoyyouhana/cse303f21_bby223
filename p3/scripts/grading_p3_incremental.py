@@ -16,7 +16,7 @@ k2file1 = "server/parsing.h"
 k2file2 = "server/storage.h"
 k3 = "third_key"
 k3file1 = "solutions/file.o"
-k3file2 = "common/bytevec.h"
+k3file2 = "common/net.h"
 makefiles = ["Makefile", "p3.persist.mk"]
 
 # Create objects with server and client configuration
@@ -52,7 +52,7 @@ cse303.do_cmd("Registering new user alice.", "___OK___", client.reg(alice), serv
 cse303.after(server.pid) # need an extra cleanup to handle the KEY that was sent by first REG
 cse303.do_cmd("Stopping server.", "___OK___", client.bye(alice), server)
 cse303.await_server("Waiting for server to shut down.", "Server terminated", server)
-expect_size1 = 8 + 4 + len(alice.name) + 4 + 16 + 4 + 32 + 4
+expect_size1 = cse303.next8(8 + 8 + len(alice.name) + 8 + 16 + 8 + 32 + 8)
 cse303.verify_filesize(server.dirfile, expect_size1)
 server.pid = cse303.do_cmd_a("Restarting server:", [
     "Listening on port "+server.port+" using (key/data) = (rsa, "+server.dirfile+")",
@@ -72,7 +72,7 @@ server.pid = cse303.do_cmd_a("Restarting server:", [
     "Loaded: " + server.dirfile], server.launchcmd())
 cse303.waitfor(2)
 cse303.do_cmd("Setting alice's content.", "___OK___", client.setC(alice, afile1), server)
-expect_size2 = expect_size1 + 8 + 4 + len("alice") + 4 + cse303.get_len(afile1)
+expect_size2 = expect_size1 + cse303.next8(8 + 8 + len("alice") + 8 + cse303.get_len(afile1))
 cse303.verify_filesize(server.dirfile, expect_size2)
 cse303.do_cmd("Stopping server.", "___OK___", client.bye(alice), server)
 cse303.await_server("Waiting for server to shut down.", "Server terminated", server)
@@ -83,7 +83,7 @@ cse303.waitfor(2)
 cse303.do_cmd("Checking alice's content.", "___OK___", client.getC(alice, alice.name), server)
 cse303.check_file_result(afile1, alice.name)
 cse303.do_cmd("Re-setting alice's content.", "___OK___", client.setC(alice, afile2), server)
-expect_size3 = expect_size2 + 8 + 4 + len("alice") + 4 + cse303.get_len(afile2)
+expect_size3 = expect_size2 + cse303.next8(8 + 8 + len("alice") + 8 + cse303.get_len(afile2))
 cse303.verify_filesize(server.dirfile, expect_size3)
 cse303.do_cmd("Stopping server.", "___OK___", client.bye(alice), server)
 cse303.await_server("Waiting for server to shut down.", "Server terminated", server)
@@ -98,7 +98,7 @@ server.pid = cse303.do_cmd_a("Restarting server:", [
 cse303.waitfor(2)
 cse303.do_cmd("Setting key k1.", "___OK___", client.kvI(alice, k1, k1file1), server)
 cse303.do_cmd("Stopping server.", "___OK___", client.bye(alice), server)
-expect_size4 = expect_size3 + 8 + 4 + len(k1) + 4 + cse303.get_len(k1file1)
+expect_size4 = expect_size3 + cse303.next8(8 + 8 + len(k1) + 8 + cse303.get_len(k1file1))
 cse303.verify_filesize(server.dirfile, expect_size4)
 cse303.await_server("Waiting for server to shut down.", "Server terminated", server)
 server.pid = cse303.do_cmd_a("Restarting server:", [
@@ -118,12 +118,12 @@ server.pid = cse303.do_cmd_a("Restarting server:", [
     "Listening on port "+server.port+" using (key/data) = (rsa, "+server.dirfile+")",
     "Loaded: " + server.dirfile], server.launchcmd())
 cse303.waitfor(2)
-cse303.do_cmd("Upserting key k1.", "OKUPD", client.kvU(alice, k1, k1file2), server)
-cse303.do_cmd("Upserting key k2.", "OKINS", client.kvU(alice, k2, k2file1), server)
-expect_size5 = expect_size4 + 8 + 4 + len(k1) + 4 + cse303.get_len(k1file2) + 8 + 4 + len(k2) + 4 + cse303.get_len(k2file1)
+cse303.do_cmd("Upserting key k1.", "OK_UPDATE", client.kvU(alice, k1, k1file2), server)
+cse303.do_cmd("Upserting key k2.", "OK_INSERT", client.kvU(alice, k2, k2file1), server)
+expect_size5 = expect_size4 + cse303.next8(8 + 8 + len(k1) + 8 + cse303.get_len(k1file2)) + cse303.next8(8 + 8 + len(k2) + 8 + cse303.get_len(k2file1))
 cse303.verify_filesize(server.dirfile, expect_size5 )
 cse303.verify_peek(server.dirfile, expect_size4, 8, "KVUPDATE")
-cse303.verify_peek(server.dirfile, expect_size4 + 8 + 4 + len(k1) + 4 + cse303.get_len(k1file2), 8, "KVKVKVKV")
+cse303.verify_peek(server.dirfile, expect_size4 + 8 + cse303.next8(8 + len(k1) + 8 + cse303.get_len(k1file2)), 8, "KVKVKVKV")
 cse303.do_cmd("Stopping server.", "___OK___", client.bye(alice), server)
 cse303.await_server("Waiting for server to shut down.", "Server terminated", server)
 server.pid = cse303.do_cmd_a("Restarting server:", [
@@ -146,7 +146,7 @@ server.pid = cse303.do_cmd_a("Restarting server:", [
     "Loaded: " + server.dirfile], server.launchcmd())
 cse303.waitfor(2)
 cse303.do_cmd("Deleting key k1.", "___OK___", client.kvD(alice, k1), server)
-expect_size6 = expect_size5 + 8 + 4 + len(k1)
+expect_size6 = expect_size5 + cse303.next8(8 + 8 + len(k1))
 cse303.verify_filesize(server.dirfile, expect_size6)
 cse303.do_cmd("Stopping server.", "___OK___", client.bye(alice), server)
 cse303.await_server("Waiting for server to shut down.", "Server terminated", server)
@@ -166,11 +166,11 @@ server.pid = cse303.do_cmd_a("Restarting server:", [
     "Listening on port "+server.port+" using (key/data) = (rsa, "+server.dirfile+")",
     "Loaded: " + server.dirfile], server.launchcmd())
 cse303.waitfor(2)
-cse303.do_cmd("Upserting key k2.", "OKUPD", client.kvU(alice, k2, k2file1), server)
-cse303.do_cmd("Upserting key k2.", "OKUPD", client.kvU(alice, k2, k2file2), server)
-cse303.do_cmd("Upserting key k3.", "OKINS", client.kvU(alice, k3, k3file1), server)
-cse303.do_cmd("Upserting key k3.", "OKUPD", client.kvU(alice, k3, k3file2), server)
-expect_size7 = expect_size6 + 8 + 4 + len(k2) + 4 + cse303.get_len(k2file1) + 8 + 4 + len(k2) + 4 + cse303.get_len(k2file2) + 8 + 4 + len(k3) + 4 + cse303.get_len(k3file1) + 8 + 4 + len(k3) + 4 + cse303.get_len(k3file2)
+cse303.do_cmd("Upserting key k2.", "OK_UPDATE", client.kvU(alice, k2, k2file1), server)
+cse303.do_cmd("Upserting key k2.", "OK_UPDATE", client.kvU(alice, k2, k2file2), server)
+cse303.do_cmd("Upserting key k3.", "OK_INSERT", client.kvU(alice, k3, k3file1), server)
+cse303.do_cmd("Upserting key k3.", "OK_UPDATE", client.kvU(alice, k3, k3file2), server)
+expect_size7 = expect_size6 + cse303.next8(8 + 8 + len(k2) + 8 + cse303.get_len(k2file1)) + cse303.next8(8 + 8 + len(k2) + 8 + cse303.get_len(k2file2)) + cse303.next8(8 + 8 + len(k3) + 8 + cse303.get_len(k3file1)) + cse303.next8(8 + 8 + len(k3) + 8 + cse303.get_len(k3file2))
 cse303.verify_filesize(server.dirfile, expect_size7)
 cse303.do_cmd("Stopping server.", "___OK___", client.bye(alice), server)
 cse303.await_server("Waiting for server to shut down.", "Server terminated", server)
@@ -194,7 +194,7 @@ server.pid = cse303.do_cmd_a("Restarting server:", [
     "Loaded: " + server.dirfile], server.launchcmd())
 cse303.waitfor(2)
 cse303.do_cmd("Instructing server to persist data.", "___OK___", client.persist(alice), server)
-expect_size8 = 8 + 4 + len(alice.name) + 4 + 16 + 4 + 32 + 4 + cse303.get_len(afile2) + 8 + 4 + len(k2) + 4 + cse303.get_len(k2file2) + 8 + 4 + len(k3) + 4 + cse303.get_len(k3file2)
+expect_size8 = cse303.next8(8 + 8 + len(alice.name) + 8 + 16 + 8 + 32 + 8 + cse303.get_len(afile2)) + cse303.next8(8 + 8 + len(k2) + 8 + cse303.get_len(k2file2)) + cse303.next8(8 + 8 + len(k3) + 8 + cse303.get_len(k3file2))
 cse303.verify_filesize(server.dirfile, expect_size8)
 cse303.do_cmd("Checking alice's content.", "___OK___", client.getC(alice, alice.name), server)
 cse303.check_file_result(afile2, alice.name)
