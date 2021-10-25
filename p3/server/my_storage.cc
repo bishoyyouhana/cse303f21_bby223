@@ -610,7 +610,7 @@ public:
 
     string currentFileName = this->filename;
     string tempFileName = this->filename + ".tmp";
-    FILE *tmp_file = fopen(tempFileName.c_str(), "wb");
+    FILE *tmp_file = nullptr;
     
     //fclose(storage_file);
     //storage_file = fopen(tempFileName.c_str(), "wb");
@@ -623,32 +623,33 @@ public:
     kv.insert(kv.begin(),KVENTRY.begin(), KVENTRY.end());
 
     auth_table->do_all_readonly ([&](string , const AuthTableEntry table) {
+      if(tmp_file == nullptr) tmp_file = fopen(tempFileName.c_str(), "wb");
 
       string padding = "\0";
       int bytesUsed=0;
-      fwrite(AUTHEN.data(), sizeof(char), AUTHENTRY.length(), storage_file);
+      fwrite(AUTHEN.data(), sizeof(char), AUTHENTRY.length(), tmp_file);
 
       size_t userSize = table.username.length();
       size_t saltSize = table.salt.size();
       size_t hashSize = table.pass_hash.size();
       size_t contentSize = table.content.size();
 
-      fwrite(&userSize, sizeof(size_t), 1, storage_file);
-      fwrite(&saltSize, sizeof(size_t), 1, storage_file);
-      fwrite(&hashSize, sizeof(size_t), 1, storage_file);
-      fwrite(&contentSize, sizeof(size_t), 1, storage_file);
+      fwrite(&userSize, sizeof(size_t), 1, tmp_file);
+      fwrite(&saltSize, sizeof(size_t), 1, tmp_file);
+      fwrite(&hashSize, sizeof(size_t), 1, tmp_file);
+      fwrite(&contentSize, sizeof(size_t), 1, tmp_file);
 
       vector<uint8_t> usernameVec(userSize);
       usernameVec.insert(usernameVec.begin(), table.username.begin(), table.username.end());
-      bytesUsed += fwrite(usernameVec.data(),sizeof(char), userSize, storage_file );
+      bytesUsed += fwrite(usernameVec.data(),sizeof(char), userSize, tmp_file );
 
-      bytesUsed+= fwrite(table.salt.data(), sizeof(uint8_t), saltSize, storage_file);
-      bytesUsed += fwrite(table.pass_hash.data(), sizeof(uint8_t), hashSize, storage_file);
+      bytesUsed+= fwrite(table.salt.data(), sizeof(uint8_t), saltSize, tmp_file);
+      bytesUsed += fwrite(table.pass_hash.data(), sizeof(uint8_t), hashSize, tmp_file);
 
-      if (contentSize > 0) bytesUsed += fwrite(table.content.data(), sizeof(uint8_t), contentSize, storage_file);
+      if (contentSize > 0) bytesUsed += fwrite(table.content.data(), sizeof(uint8_t), contentSize, tmp_file);
       //int x = fwrite(&padding, sizeof(char), 8, storage_file);
       
-      if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
+      if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), tmp_file);
     
     },[&](){
 
@@ -657,32 +658,32 @@ public:
       string padding = "\0";
       int bytesUsed=0;
       //auth.clear();
-      fwrite(kv.data(),sizeof(char), 8, storage_file);
+      fwrite(kv.data(),sizeof(char), 8, tmp_file);
 
       size_t keySize = key.length();
       size_t valSize = value.size();
 
-      fwrite(&keySize, sizeof(size_t), 1, storage_file);
-      fwrite(&valSize, sizeof(size_t), 1, storage_file);
+      fwrite(&keySize, sizeof(size_t), 1, tmp_file);
+      fwrite(&valSize, sizeof(size_t), 1, tmp_file);
 
       vector<uint8_t> keyV(keySize);
       keyV.insert(keyV.begin(), key.begin(), key.end());
 
-      bytesUsed += fwrite(keyV.data(), sizeof(char), keySize, storage_file);
-      bytesUsed+= fwrite(value.data(), sizeof(uint8_t), valSize, storage_file);
+      bytesUsed += fwrite(keyV.data(), sizeof(char), keySize, tmp_file);
+      bytesUsed+= fwrite(value.data(), sizeof(uint8_t), valSize, tmp_file);
 
       //int x = fwrite(&padding, sizeof(char), 8, storage_file);
       
-      if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
+      if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), tmp_file);
     
     },[&](){
+      fclose(storage_file);
+      fclose(tmp_file);
       rename(tempFileName.c_str(), currentFileName.c_str());
-      //fclose(storage_file);
+      storage_file = fopen(currentFileName.c_str(), "a+"); 
     });
-
     });
-    //storage_file = fopen(tempFileName.c_str(), "ab"); //should i?
-    fclose(tmp_file);
+    //storage_file = fopen(currentFileName.c_str(), "a+"); 
     return result_t{true, RES_OK, {}};
   
   }
@@ -837,7 +838,7 @@ public:
         vector<uint8_t> valVec(valLen);
         bytesUsed +=fread(valVec.data(), sizeof(uint8_t), valLen, storage_file );
 
-        bool check = this->kv_store->upsert(key, valVec, [&](){},[&](){});
+        this->kv_store->upsert(key, valVec, [&](){},[&](){});
 
         //cout<<"KVUPDATE"<<endl;
         //cout<<key.length()<<endl;
