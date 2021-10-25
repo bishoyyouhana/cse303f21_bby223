@@ -115,26 +115,20 @@ public:
     //new_user.username.insert(new_user.username.begin(), user.begin(), user.end());
     new_user.salt= saltVec;
     new_user.pass_hash= hashedPass;
-    cout<<"before lambda"<<endl;
 
     bool check = auth_table->insert(user, new_user, [&]() {
       vector<uint8_t> AUTHEN;
-      AUTHEN.reserve(AUTHENTRY.length());
+      //AUTHEN.reserve(AUTHENTRY.length());
       AUTHEN.insert(AUTHEN.begin(),AUTHENTRY.begin(), AUTHENTRY.end());
       
       int bytesUsed=0;
       string padding = "\0";
-      cout<<AUTHEN.size()<<endl;
-      cout<<AUTHENTRY.length()<<endl;
-      fwrite(AUTHEN.data(), sizeof(char), 8, storage_file);
-      cout<<AUTHEN.size()<<endl;
+      fwrite(AUTHEN.data(), sizeof(char), AUTHENTRY.length(), storage_file);
 
       size_t userSize = new_user.username.length();
       size_t saltSize = new_user.salt.size();
       size_t hashSize = new_user.pass_hash.size();
       size_t contentSize = new_user.content.size();
-
-      cout<<contentSize<<endl;
 
       fwrite(&userSize, sizeof(size_t), 1, storage_file);
       fwrite(&saltSize, sizeof(size_t), 1, storage_file);
@@ -154,6 +148,7 @@ public:
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
 
       fflush(storage_file);
+      fsync(fileno(storage_file));
 
     });
 
@@ -190,7 +185,7 @@ public:
     {
       return result_t{false, RES_ERR_LOGIN, {}};
     }
-
+    //cout<<"help\n";
     vector<uint8_t> diff(8);
     //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
     diff.insert(diff.begin(),AUTHDIFF.begin(), AUTHDIFF.end());
@@ -212,16 +207,24 @@ public:
       usernameVec.insert(usernameVec.begin(), user.username.begin(), user.username.end());
       bytesUsed += fwrite(usernameVec.data(),sizeof(char), userSize, storage_file );
 
-      bytesUsed += fwrite(user.content.data(), sizeof(uint8_t), profLen, storage_file);
+      if(user.content.size() > 0) bytesUsed += fwrite(user.content.data(), sizeof(uint8_t), profLen, storage_file);
+      //std::cout<<profLen<<std::endl;
+      //std::cout<<user.content.size()<<std::endl;
 
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
       fflush(storage_file);
+      fsync(fileno(storage_file));
     };
 
     //AuthTableEntry new_user;
 
     if (this->auth_table->do_with(user, lambdaF) == 0)
       return result_t{false, RES_ERR_NO_DATA, {}};
+    //cout<<"what's up?"<<endl;
+    //cout<<content.size()<<endl;
+    //couts not working
+    if(content.size()==0){return result_t{false, RES_ERR_NO_DATA, {}};}
+    //std::cout.flush();
 
     return {true, RES_OK, {}};
 
@@ -390,6 +393,7 @@ public:
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
 
       fflush(storage_file);
+      fsync(fileno(storage_file));
 
     })) return {true, RES_OK, {}}; 
     
@@ -465,6 +469,7 @@ public:
       bytesUsed += fwrite(keyV.data(), sizeof(char), keySize, storage_file);
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
       fflush(storage_file);
+      fsync(fileno(storage_file));
 
     })) return {true, RES_OK, {}}; 
     
@@ -523,6 +528,7 @@ public:
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
 
       fflush(storage_file);
+      fsync(fileno(storage_file));
 
   }, [&](){  //KVUPDATE
 
@@ -544,6 +550,7 @@ public:
       
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
       fflush(storage_file);
+      fsync(fileno(storage_file));
   })) 
     return {true, RES_OKINS, {}};
   return {true, RES_OKUPD, {}}; 
@@ -585,7 +592,9 @@ public:
   /// any open files related to incremental persistence.  It also needs to clean
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
-  virtual void shutdown() {
+  virtual void shutdown() { 
+    fclose(storage_file);
+    //not empty
     //cout << "my_storage.cc::shutdown() is not implemented\n";
   }
 
@@ -601,7 +610,10 @@ public:
 
     string currentFileName = this->filename;
     string tempFileName = this->filename + ".tmp";
-    FILE *storage_file = fopen(tempFileName.c_str(), "wb");
+    FILE *tmp_file = fopen(tempFileName.c_str(), "wb");
+    
+    //fclose(storage_file);
+    //storage_file = fopen(tempFileName.c_str(), "wb");
 
     vector<uint8_t> AUTHEN(8);
     //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
@@ -663,13 +675,14 @@ public:
       
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
     
-    },[](){});
-
+    },[&](){
+      rename(tempFileName.c_str(), currentFileName.c_str());
+      //fclose(storage_file);
     });
 
-    
-  rename(tempFileName.c_str(), currentFileName.c_str());
-    fclose(storage_file);
+    });
+    //storage_file = fopen(tempFileName.c_str(), "ab"); //should i?
+    fclose(tmp_file);
     return result_t{true, RES_OK, {}};
   
   }
@@ -683,8 +696,11 @@ public:
   virtual result_t load_file() {
     //cout << "my_storage.cc::save_file() is not implemented\n";
     //return {false, RES_ERR_UNIMPLEMENTED, {}};
-    FILE *storage_file = fopen(filename.c_str(), "rb");
-    if (storage_file == nullptr)  return {true, "File not found: " + filename, {}};
+    storage_file = fopen(filename.c_str(), "rb");
+    if (storage_file == nullptr){  
+      storage_file = fopen(filename.c_str(), "wb"); 
+      return {true, "File not found: " + filename, {}};
+    }
     this->auth_table->clear();
     this->kv_store->clear();
 
@@ -695,16 +711,25 @@ public:
     int x = 0; //just to prevent errors
 
     vector<uint8_t> AUTHEN(8);
-    //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
     AUTHEN.insert(AUTHEN.begin(),AUTHENTRY.begin(), AUTHENTRY.end());
 
     vector<uint8_t> kvkv(8);
-    //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
     kvkv.insert(kvkv.begin(),KVENTRY.begin(), KVENTRY.end());
+
+    vector<uint8_t> diff(8);
+    diff.insert(diff.begin(),AUTHDIFF.begin(), AUTHDIFF.end());
+
+    vector<uint8_t> update(8);
+    update.insert(update.begin(),KVUPDATE.begin(), KVUPDATE.end());
+
+    vector<uint8_t> del(8);
+    del.insert(del.begin(),KVDELETE.begin(), KVDELETE.end());
 
     vector<uint8_t> buffer(8);
     x=fread(buffer.data(),sizeof(char), 8, storage_file );
+
     while(cont){
+      //Authentry
       if(equal(AUTHEN.begin(), AUTHEN.end(), buffer.begin())){
         buffer.clear();
         AuthTableEntry new_user;
@@ -739,12 +764,12 @@ public:
         
         bool check = auth_table->insert(new_user.username, new_user, [&]() {});     
         bytesUsed =0;
-     
+        //cout<<"Authentry"<<endl;
         if(!check){
           return result_t{false, RES_ERR_SERVER, {}};
         }
-
-      }else if(equal(kvkv.begin(), kvkv.end(), buffer.begin())){
+      
+      }else if(equal(kvkv.begin(), kvkv.end(), buffer.begin())){ //Kventry
         buffer.clear();
         bytesUsed=0;
         // KV entry
@@ -760,10 +785,82 @@ public:
         std::string str(keyVec.begin(), keyVec.end());
         bool check = kv_store->insert(str, valVec, [&](){});
 
+        //cout<<"Kventry"<<endl;
         if(!check){
           return result_t{false, RES_ERR_SERVER, {}};
         }
 
+        vector<uint8_t> buf(8);
+        if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+
+      }else if(equal(diff.begin(), diff.end(), buffer.begin())){ //AUTHDIFF
+      buffer.clear();
+      bytesUsed =0;
+        x=fread(&userLen,sizeof(size_t), 1, storage_file );
+        x=fread(&dataLen,sizeof(size_t), 1, storage_file );
+
+        
+        string username = "";
+        vector<uint8_t> usernameVec(userLen);
+        bytesUsed +=fread(usernameVec.data(), sizeof(uint8_t), userLen, storage_file );
+        username.insert(username.begin(), usernameVec.begin(), usernameVec.end());
+
+        vector<uint8_t> profVec(dataLen);
+        bytesUsed +=fread(profVec.data(), sizeof(uint8_t), dataLen, storage_file );
+
+        bool check = this->auth_table->do_with(username, [&](AuthTableEntry &user){user.content = profVec;});
+
+        //cout<<"AUTHDIFF"<<endl;
+        //cout<<bytesUsed<<endl;
+        //cout<<x<<endl;
+        //cout<<userLen<<endl;
+        //cout<<dataLen<<endl;
+        //cout<<username.length()<<endl;
+        //cout<<profVec.size()<<endl;
+        if(!check){ return result_t{false, RES_ERR_SERVER, {}};}
+        vector<uint8_t> buf(8);
+        if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+
+
+      }else if(equal(update.begin(), update.end(), buffer.begin())){ //KVUPDATE
+      buffer.clear();
+      bytesUsed =0;
+        x=fread(&keyLen,sizeof(size_t), 1, storage_file );
+        x=fread(&valLen,sizeof(size_t), 1, storage_file );
+
+        vector<uint8_t> keyVec(keyLen);
+        string key="";
+        bytesUsed +=fread(keyVec.data(), sizeof(uint8_t), keyLen, storage_file );
+        //username.insert(username.begin(), usernameVec.begin(), usernameVec.end());
+        key.insert(key.begin(),keyVec.begin(), keyVec.end());
+
+        vector<uint8_t> valVec(valLen);
+        bytesUsed +=fread(valVec.data(), sizeof(uint8_t), valLen, storage_file );
+
+        bool check = this->kv_store->upsert(key, valVec, [&](){},[&](){});
+
+        //cout<<"KVUPDATE"<<endl;
+        //cout<<key.length()<<endl;
+        //cout<<valVec.size()<<endl;
+        //cout<<typeid(key).name()<<endl;
+        //cout<<typeid(valVec).name()<<endl;
+        //if(!check){ return result_t{false, RES_ERR_SERVER, {}};}
+        vector<uint8_t> buf(8);
+        if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+
+      }else if(equal(del.begin(), del.end(), buffer.begin())){ //KVDELETE
+      buffer.clear();
+      bytesUsed =0;
+        x=fread(&keyLen,sizeof(size_t), 1, storage_file );
+
+        vector<uint8_t> keyVec(keyLen);
+        string key="";
+        bytesUsed +=fread(keyVec.data(), sizeof(uint8_t), keyLen, storage_file );
+        key.insert(key.begin(),keyVec.begin(), keyVec.end());
+        bool check = this->kv_store->remove(key, [&]() {});
+
+        //cout<<"KVDELETE"<<endl;
+        if(!check){ return result_t{false, RES_ERR_SERVER, {}};}
         vector<uint8_t> buf(8);
         if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
       }
@@ -774,14 +871,12 @@ public:
       if(x==8){
         //equal(AUTHEN.begin(), AUTHEN.end(), buffer.begin())
         cont = true;
-      }else if(x==8){
-        //cout<<equal(kvkv.begin(), kvkv.end(), buffer.begin())<<endl;
-        cont = true;
       }else{
         cont = false;
       }
     }
     fclose(storage_file);
+    storage_file = fopen(filename.c_str(), "a+");
     return result_t{true, "Loaded: " + filename, {}};
   };
 };
