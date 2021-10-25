@@ -217,11 +217,8 @@ public:
     };
 
     //AuthTableEntry new_user;
-
     if (this->auth_table->do_with(user, lambdaF) == 0)
       return result_t{false, RES_ERR_NO_DATA, {}};
-    //cout<<"what's up?"<<endl;
-    //cout<<content.size()<<endl;
     //couts not working
     if(content.size()==0){return result_t{false, RES_ERR_NO_DATA, {}};}
     //std::cout.flush();
@@ -247,7 +244,7 @@ public:
     //assert(pass.length() > 0);
     //assert(who.length() > 0);
     //return {false, RES_ERR_UNIMPLEMENTED, {}};
-
+    //cout<<"get user data called"<<endl;
     auto allow = auth(user, pass);
 
     if (!allow.succeeded)
@@ -260,10 +257,17 @@ public:
     {
       content = user.content;
     };
-    if ((this->auth_table->do_with_readonly(who, lamdaf)) == 0)
+    //cout<<"hello"<<endl;
+    if (!this->auth_table->do_with_readonly(who, lamdaf))
+    {
+      return result_t{false, RES_ERR_SERVER, {}};
+    }
+
+    if ( content.size()== 0)
     {
       return result_t{false, RES_ERR_NO_DATA, {}};
     }
+    //cout<<content.size()<<endl;
     return result_t{true, RES_OK, content};
 
   }
