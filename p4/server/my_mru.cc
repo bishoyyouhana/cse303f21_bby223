@@ -30,18 +30,17 @@ public:
   ///
   /// @param elt The element to insert
   virtual void insert(const std::string &elt) {
-    //cout << "my_mru.cc::insert() is not implemented\n";
     // do linear search, which is O(n)
     // also check size of deque to see if not past numTrack
-    bool dupe = false;
-    if (mru.size()<numTrack) {
-      for(auto it = mru.end(); it != mru.begin(); it--) {
-        if ((*it).compare(elt) == 0) 
-          dupe = true;
+    for(auto it = mru.begin(); it != mru.end(); it++) {
+      if ((*it).compare(elt) == 0) {
+        mru.erase(it);
+        break;
       }
-      if (!dupe)
-        mru.emplace_back(elt);
     }
+    if (mru.size() == numTrack) // if all ready at max size, then erase head
+      mru.erase(mru.begin());
+    mru.emplace_back(elt);
   }
 
   /// Remove an instance of an element from the mru_manager.  This can leave the
@@ -49,9 +48,8 @@ public:
   ///
   /// @param elt The element to remove
   virtual void remove(const std::string &elt) {
-    //cout << "my_mru.cc::remove() is not implemented\n";
     // do linear search, if element is there remove
-    for(auto it = mru.end(); it != mru.begin(); it--) {
+    for(auto it = mru.begin(); it != mru.end(); it++) {
       if ((*it).compare(elt) == 0) {
         mru.erase(it);
         break;
@@ -61,20 +59,22 @@ public:
   }
 
   /// Clear the mru_manager
-  virtual void clear() { //cout << "my_mru.cc::clear() is not implemented\n"; 
+  virtual void clear() {
     mru.clear();
   }
 
   /// Produce a concatenation of the top entries, in order of popularity
   ///
   /// @return A newline-separated list of values
-  virtual std::string get() { //cout << "my_mru.cc::get() is not implemented\n"; 
+  virtual std::string get() {
     // create a final string
     std::string result = "";
     // loop throug mru and add string value from tail (recently used).
-     for(auto it = mru.end(); it != mru.begin(); it--) {
+     for(auto it = mru.end()-1; it != mru.begin(); it--) {
        result = result + (*it) + "\n";
      }
+     // print head of deque
+     result = result + mru.at(0) + "\n";
      return result;
   }
 };
