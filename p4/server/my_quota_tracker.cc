@@ -9,8 +9,13 @@ using namespace std;
 
 /// quota_tracker stores time-ordered information about events.  It can count
 /// events within a pre-set, fixed time threshold, to decide if a new event can
-/// be allowed without violating a quota.
+/// be allowed without violating a quota.  
 class my_quota_tracker : public quota_tracker {
+
+  size_t qAmount;
+  double qDuration;
+  time_t timer;
+  std::deque<std::pair<double, size_t>> quotaTracker;
 
 public:
   /// Construct a tracker that limits usage to quota_amount per quota_duration
@@ -18,7 +23,10 @@ public:
   ///
   /// @param amount   The maximum amount of service
   /// @param duration The time over which the service maximum can be spread out
-  my_quota_tracker(size_t amount, double duration) {}
+  my_quota_tracker(size_t amount, double duration) {
+    qAmount = amount;
+    qDuration = duration;
+  }
 
   /// Destruct a quota tracker
   virtual ~my_quota_tracker() {}
@@ -33,6 +41,7 @@ public:
   ///         quota, true if the amount was added while preserving the quota
   virtual bool check_add(size_t amount) {
     cout << "my_quota_tracker.cc::check_add() is not implemented\n";
+    // first check capacity of qouta tracker
   }
 };
 

@@ -12,6 +12,7 @@ using namespace std;
 class my_mru : public mru_manager {
 
 std::deque<std::string> mru;
+std::mutex lock;
 size_t numTrack;
 
 public:
@@ -30,6 +31,7 @@ public:
   ///
   /// @param elt The element to insert
   virtual void insert(const std::string &elt) {
+    lock.lock();
     // do linear search, which is O(n)
     // also check size of deque to see if not past numTrack
     for(auto it = mru.begin(); it != mru.end(); it++) {
@@ -41,6 +43,7 @@ public:
     if (mru.size() == numTrack) // if all ready at max size, then erase head
       mru.erase(mru.begin());
     mru.emplace_back(elt);
+    lock.unlock();
   }
 
   /// Remove an instance of an element from the mru_manager.  This can leave the
@@ -48,25 +51,29 @@ public:
   ///
   /// @param elt The element to remove
   virtual void remove(const std::string &elt) {
+    lock.lock();
     // do linear search, if element is there remove
     for(auto it = mru.begin(); it != mru.end(); it++) {
       if ((*it).compare(elt) == 0) {
         mru.erase(it);
         break;
       }
-
     }
+    lock.unlock();
   }
 
   /// Clear the mru_manager
   virtual void clear() {
+    lock.lock();
     mru.clear();
+    lock.unlock();
   }
 
   /// Produce a concatenation of the top entries, in order of popularity
   ///
   /// @return A newline-separated list of values
   virtual std::string get() {
+    lock.lock();
     // create a final string
     std::string result = "";
     // loop throug mru and add string value from tail (recently used).
@@ -75,6 +82,7 @@ public:
      }
      // print head of deque
      result = result + mru.at(0) + "\n";
+     lock.unlock();
      return result;
   }
 };
