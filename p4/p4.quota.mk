@@ -12,10 +12,10 @@ CLIENT_PROVIDED = client requests crypto err file net my_crypto
 
 # Names for building the server
 SERVER_MAIN     = server
-SERVER_CXX      = my_storage my_quota_tracker persist
+SERVER_CXX      = my_storage my_quota_tracker
 SERVER_COMMON   = 
-SERVER_PROVIDED = server responses parsing concurrenthashmap_factories \
-                  my_mru crypto err file net my_pool my_crypto
+SERVER_PROVIDED = server responses parsing concurrenthashmap_factories persist \
+                  my_mru crypto err file net my_pool my_crypto helpers
 
 # All warnings should be treated as errors
 CXXEXTRA = -Werror
