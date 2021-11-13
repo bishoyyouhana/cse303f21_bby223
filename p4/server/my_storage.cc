@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <mutex>
 
 #include "../common/contextmanager.h"
 #include "../common/err.h"
@@ -25,6 +26,7 @@
 #include "persist.h"
 #include "quotas.h"
 #include "storage.h"
+#include "quota_tracker.h"
 
 using namespace std;
 
@@ -61,6 +63,9 @@ class MyStorage : public Storage {
   /// A table for tracking quotas
   Map<string, Quotas *> *quota_table;
 
+  // extra lock 
+  std::mutex extraLock;
+
 public:
   /// Construct an empty object and specify the file from which it should be
   /// loaded.  To avoid exceptions and errors in the constructor, the act of
@@ -86,6 +91,28 @@ public:
     // TODO: you probably want to free some memory here...
   }
 
+  virtual vector<uint8_t> hash_pass(string pass, vector<uint8_t> &salt)
+  {
+    vector<uint8_t> toHash;
+    vector<uint8_t> password;
+    vector<uint8_t> saltVec;
+
+    password.insert(password.begin(), pass.begin(), pass.end());
+
+    toHash.insert(toHash.begin(), password.begin(), password.end());
+    toHash.insert(toHash.end(), salt.begin(), salt.end());
+
+    vector<uint8_t> hash(SHA256_DIGEST_LENGTH);
+
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+
+    SHA256_Update(&sha256, toHash.data(), toHash.size());
+    SHA256_Final(hash.data(), &sha256);
+
+    return hash;
+  }
+
   /// Create a new entry in the Auth table.  If the user already exists, return
   /// an error.  Otherwise, create a salt, hash the password, and then save an
   /// entry with the username, salt, hashed password, and a zero-byte content.
@@ -95,8 +122,17 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t add_user(const string &user, const string &pass) {
+    //cout << "add_user\n";
     // NB: the helper (.o provided) does all the work for this operation :)
-    return add_user_helper(user, pass, auth_table, storage_file);
+    add_user_helper(user, pass, auth_table, storage_file);
+
+    Quotas newQuotas;
+    newQuotas.downloads = quota_factory(down_quota, quota_dur);
+    newQuotas.uploads = quota_factory(up_quota, quota_dur);
+    newQuotas.requests = quota_factory(req_quota, quota_dur);
+    this->quota_table->insert(user, &newQuotas,[](){});
+
+    return result_t{true, RES_OK, {}};
   }
 
   /// Set the data bytes for a user, but do so if and only if the password
@@ -109,6 +145,7 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t set_user_data(const string &user, const string &pass,
                                  const vector<uint8_t> &content) {
+                                   cout << "set_user_data\n";
     // NB: the helper (.o provided) does all the work for this operation :)
     return set_user_data_helper(user, pass, content, auth_table, storage_file);
   }
@@ -161,17 +198,43 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_insert(const string &user, const string &pass,
                              const string &key, const vector<uint8_t> &val) {
-    // NB: log_sv() in persist.h (implementation in persist.o) will be helpful
-    //     here
-    cout << "my_storage.cc::kv_insert() is not implemented\n";
-    // NB: These asserts are to prevent compiler warnings.. you can delete them
-    //     when you implement this method
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    assert(key.length() > 0);
-    assert(val.size() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
-  };
+
+    cout<<"HEEEEEEEEEEEEEEEEEEEEEEEEELP"<<endl;
+
+    auto allow = this->auth(user, pass); //think about changing to tuple
+    if (!allow.succeeded)  return result_t{false, RES_ERR_LOGIN, {}};
+
+    bool quota_req_err = false;
+    bool quota_up_err =false;
+    cout<<"helo"<<endl;
+    auto lambdaF = [&](Quotas *q)
+    {
+      cout<<"helo"<<endl;
+      if(!q->requests->check_add(1)) quota_req_err = true;
+      cout<<"helo"<<endl;
+      if(!q->uploads->check_add(val.size())) quota_up_err = true;
+    };
+
+    cout<<"helo"<<endl;
+    if(this->quota_table->do_with(user, lambdaF)==0) return result_t{false, RES_ERR_SERVER, {}};
+    if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
+    if(quota_up_err) return result_t{false, RES_ERR_QUOTA_UP, {}};
+
+    cout<<"helo"<<endl;
+    if(this->kv_store->insert(key,val, [&](){
+      //auth.clear();
+      this->mru->insert(key);
+      extraLock.lock(); //probably not needed
+      log_sv(storage_file, KVENTRY,key , val);   //log_sv(FILE *logfile, const std::string &delim, const std::string &s1, const std::vector<uint8_t> &v1);
+      extraLock.unlock();
+
+      fflush(storage_file);
+      fsync(fileno(storage_file));
+
+    })) return result_t{true, RES_OK, {}}; 
+    cout<<"helo"<<endl;
+    return result_t{false, RES_ERR_KEY, {}};
+    };
 
   /// Get a copy of the value to which a key is mapped
   ///
@@ -182,13 +245,37 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_get(const string &user, const string &pass,
                           const string &key) {
-    cout << "my_storage.cc::kv_get() is not implemented\n";
-    // NB: These asserts are to prevent compiler warnings.. you can delete them
-    //     when you implement this method
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    assert(key.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+
+    auto allow = this->auth(user, pass); 
+    if (!allow.succeeded)  return result_t{false, RES_ERR_LOGIN, {}};
+
+    vector<uint8_t> returnValue;
+    auto lambdaf = [&](const vector<uint8_t> &val)
+    {
+      this->mru->insert(key);
+      returnValue = val;
+    };
+
+    bool quota_req_err = false;
+    bool quota_up_err =false;
+    auto lambda2 = [&](Quotas  *q)
+    {
+      if(!q->requests->check_add(1)) quota_req_err = true;
+      
+      if(!q->uploads->check_add(returnValue.size())) quota_up_err = true;
+
+    };
+
+    if(this->quota_table->do_with(user, lambda2)==0) return result_t{false, RES_ERR_SERVER, {}};
+    if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
+    if(quota_up_err) return result_t{false, RES_ERR_QUOTA_UP, {}};
+
+    if ((this->kv_store->do_with_readonly(key, lambdaf)) == 0)
+    {
+      return result_t{false, RES_ERR_KEY, {}};
+    }
+
+    return {true, RES_OK, {returnValue}}; 
   };
 
   /// Delete a key/value mapping
@@ -200,15 +287,18 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_delete(const string &user, const string &pass,
                              const string &key) {
-    // NB: log_s() in persist.h (implementation in persist.o) will be helpful
-    //     here
-    cout << "my_storage.cc::kv_delete() is not implemented\n";
-    // NB: These asserts are to prevent compiler warnings.. you can delete them
-    //     when you implement this method
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    assert(key.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+
+    auto allow = this->auth(user, pass); //think about changing to tuple
+    if (!allow.succeeded)  return result_t{false, RES_ERR_LOGIN, {}}; 
+    //KVDELETE log_sv(storage_file, KVDELETE,key , val);        
+
+    if(this->kv_store->remove(key, [&](){
+      this->mru->remove(key);
+      log_s(storage_file, KVDELETE,key);  
+    })) return {true, RES_OK, {}}; 
+    
+    return {false, RES_ERR_SERVER, {}};                  
+      
   };
 
   /// Insert or update, so that the given key is mapped to the give value
@@ -223,16 +313,35 @@ public:
   ///         "OK" messages, depending on whether we get an insert or an update.
   virtual result_t kv_upsert(const string &user, const string &pass,
                              const string &key, const vector<uint8_t> &val) {
-    // NB: log_sv() in persist.h (implementation in persist.o) will be helpful
-    //     here
-    cout << "my_storage.cc::kv_upsert() is not implemented\n";
-    // NB: These asserts are to prevent compiler warnings.. you can delete them
-    //     when you implement this method
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    assert(key.length() > 0);
-    assert(val.size() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+
+    auto r = auth(user, pass);
+      if (!r.succeeded){return {false, r.msg, {}};    }
+
+      bool quota_req_err = false;
+    bool quota_up_err =false;
+
+auto lambdaF = [&](Quotas  *q)
+    {
+      if(!q->requests->check_add(1)) quota_req_err = true;
+      if(!q->uploads->check_add(val.size())) quota_up_err = true;
+    };
+
+    if(this->quota_table->do_with(user, lambdaF)==0) return result_t{false, RES_ERR_SERVER, {}};
+    if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
+    if(quota_up_err) return result_t{false, RES_ERR_QUOTA_UP, {}};
+
+
+  if (kv_store->upsert(key, val,[&](){
+    this->mru->insert(key);
+      log_sv(storage_file, KVENTRY,key , val); 
+
+  }, [&](){  //KVUPDATE
+this->mru->insert(key);
+log_sv(storage_file, KVUPDATE, key, val);
+      
+  })) 
+    return {true, RES_OKINS, {}};
+  return {true, RES_OKUPD, {}};
   };
 
   /// Return all of the keys in the kv_store, as a "\n"-delimited string
@@ -242,12 +351,36 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_all(const string &user, const string &pass) {
-    cout << "my_storage.cc::kv_all() is not implemented\n";
-    // NB: These asserts are to prevent compiler warnings.. you can delete them
-    //     when you implement this method
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    auto allow = auth(user, pass);
+    if (!allow.succeeded) return result_t{false, RES_ERR_LOGIN, {}};
+
+    vector<uint8_t> returnValue;
+
+    kv_store->do_all_readonly([&](string key, vector<uint8_t>){
+      returnValue.insert(returnValue.end(), key.begin(), key.end());
+      returnValue.push_back('\n');
+    }, [](){});
+    returnValue.pop_back();
+
+    bool quota_req_err = false;
+    bool quota_up_err =false;
+
+    auto lambdaF = [&](Quotas  *q)
+    {
+      if(!q->requests->check_add(1)) quota_req_err = true;
+      
+      if(!q->downloads->check_add(returnValue.size()/2)) quota_up_err = true;
+    };
+
+    if(this->quota_table->do_with(user, lambdaF)==0) return result_t{false, RES_ERR_SERVER, {}};
+    if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
+    if(quota_up_err) return result_t{false, RES_ERR_QUOTA_UP, {}};
+
+
+    if(returnValue.size() == 0) {
+      return {false, RES_ERR_NO_DATA, {}};
+    }
+    return {true, RES_OK, returnValue};
   };
 
   /// Return all of the keys in the kv_store's MRU cache, as a "\n"-delimited
@@ -258,12 +391,13 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_top(const string &user, const string &pass) {
-    cout << "my_storage.cc::kv_top() is not implemented\n";
+    //cout << "my_storage.cc::kv_top() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings.. you can delete them
     //     when you implement this method
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //string rv = this->fields->mru.get();
+    //assert(user.length() > 0);
+    //assert(pass.length() > 0);
+    //return {false, RES_ERR_UNIMPLEMENTED, {}};
   };
 
   /// Shut down the storage when the server stops.  This method needs to close
@@ -271,6 +405,7 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
+    cout << "shutdown\n";
     // NB: Based on how the other methods are implemented in the helper file, we
     //     need this command here:
     fclose(storage_file);
@@ -283,6 +418,7 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t save_file() {
+    cout << "save_file\n";
     // NB: the helper (.o provided) does all the work for this operation :)
     return save_file_helper(auth_table, kv_store, filename, storage_file);
   }
@@ -295,10 +431,187 @@ public:
   /// non-existent
   ///         file is not an error.
   virtual result_t load_file() {
+    //cout << "load_file\n";
     // NB: the helper (.o provided) does all the work from p1/p2/p3 for this
     //     operation.  Depending on how you choose to implement quotas, you may
     //     need to edit this.
-    return load_file_helper(auth_table, kv_store, filename, storage_file);
+    storage_file = fopen(filename.c_str(), "rb");
+    if (storage_file == nullptr){  
+      storage_file = fopen(filename.c_str(), "wb"); 
+      return {true, "File not found: " + filename, {}};
+    }
+    this->mru->clear();
+    this->auth_table->clear();
+    this->kv_store->clear();
+
+    size_t userLen, saltLen, passLen, dataLen, keyLen, valLen;
+
+    int bytesUsed=0;
+    bool cont = true;
+    int x = 0; //just to prevent errors
+
+    vector<uint8_t> AUTHEN(8);
+    AUTHEN.insert(AUTHEN.begin(),AUTHENTRY.begin(), AUTHENTRY.end());
+
+    vector<uint8_t> kvkv(8);
+    kvkv.insert(kvkv.begin(),KVENTRY.begin(), KVENTRY.end());
+
+    vector<uint8_t> diff(8);
+    diff.insert(diff.begin(),AUTHDIFF.begin(), AUTHDIFF.end());
+
+    vector<uint8_t> update(8);
+    update.insert(update.begin(),KVUPDATE.begin(), KVUPDATE.end());
+
+    vector<uint8_t> del(8);
+    del.insert(del.begin(),KVDELETE.begin(), KVDELETE.end());
+
+    vector<uint8_t> buffer(8);
+    x=fread(buffer.data(),sizeof(char), 8, storage_file );
+
+    while(cont){
+      //Authentry
+      if(equal(AUTHEN.begin(), AUTHEN.end(), buffer.begin())){
+        buffer.clear();
+        AuthTableEntry new_user;
+        bytesUsed =0;
+        x=fread(&userLen,sizeof(size_t), 1, storage_file );
+        x=fread(&saltLen,sizeof(size_t), 1, storage_file );
+        x=fread(&passLen,sizeof(size_t), 1, storage_file );
+        x=fread(&dataLen,sizeof(size_t), 1, storage_file );
+ 
+        vector<uint8_t> usernameVec(userLen);
+        bytesUsed += fread(usernameVec.data(),sizeof(char), userLen, storage_file );
+        new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
+
+        vector<uint8_t> saltVec(saltLen);
+        bytesUsed +=fread(saltVec.data(), sizeof(uint8_t), saltLen, storage_file );
+        new_user.salt.insert(new_user.salt.begin(), saltVec.begin(), saltVec.end());
+
+        vector<uint8_t> passVec(passLen);
+        bytesUsed +=fread(passVec.data(),sizeof(uint8_t), passLen, storage_file );
+        new_user.pass_hash.insert(new_user.pass_hash.begin(), passVec.begin(), passVec.end());
+   
+        vector<uint8_t> profVec(dataLen);
+        if(dataLen>0){   
+          bytesUsed +=fread(profVec.data(), sizeof(uint8_t), dataLen, storage_file );
+          new_user.content.insert(new_user.content.begin(), profVec.begin(), profVec.end());
+        }else{
+          new_user.content.reserve(0);
+          }
+          
+        vector<uint8_t> buf(8);
+        if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+        
+        Quotas newQuotas;
+        newQuotas.downloads = quota_factory(down_quota, quota_dur);
+        newQuotas.uploads = quota_factory(up_quota, quota_dur);
+        newQuotas.requests = quota_factory(req_quota, quota_dur);
+        this->quota_table->insert(new_user.username, &newQuotas,[&](){});
+
+        bool check = auth_table->insert(new_user.username, new_user, [&]() {});     
+        bytesUsed =0;
+        //cout<<"Authentry"<<endl;
+        if(!check){
+          return result_t{false, RES_ERR_SERVER, {}};
+        }
+      
+      }else if(equal(kvkv.begin(), kvkv.end(), buffer.begin())){ //Kventry
+        buffer.clear();
+        bytesUsed=0;
+        // KV entry
+        x=fread(&keyLen,sizeof(size_t), 1, storage_file );
+        x=fread(&valLen,sizeof(size_t), 1, storage_file );
+
+        vector<uint8_t> keyVec(keyLen);
+        bytesUsed += fread(keyVec.data(),sizeof(char), keyLen, storage_file );
+
+        vector<uint8_t> valVec(valLen);
+        bytesUsed +=fread(valVec.data(), sizeof(uint8_t), valLen, storage_file );
+
+        std::string str(keyVec.begin(), keyVec.end());
+        bool check = kv_store->insert(str, valVec, [&](){});
+
+        //cout<<"Kventry"<<endl;
+        if(!check){
+          return result_t{false, RES_ERR_SERVER, {}};
+        }
+
+        vector<uint8_t> buf(8);
+        if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+
+      }else if(equal(diff.begin(), diff.end(), buffer.begin())){ //AUTHDIFF
+      buffer.clear();
+      bytesUsed =0;
+        x=fread(&userLen,sizeof(size_t), 1, storage_file );
+        x=fread(&dataLen,sizeof(size_t), 1, storage_file );
+
+        
+        string username = "";
+        vector<uint8_t> usernameVec(userLen);
+        bytesUsed +=fread(usernameVec.data(), sizeof(uint8_t), userLen, storage_file );
+        username.insert(username.begin(), usernameVec.begin(), usernameVec.end());
+
+        vector<uint8_t> profVec(dataLen);
+        bytesUsed +=fread(profVec.data(), sizeof(uint8_t), dataLen, storage_file );
+
+        bool check = this->auth_table->do_with(username, [&](AuthTableEntry &user){user.content = profVec;});
+
+        if(!check){ return result_t{false, RES_ERR_SERVER, {}};}
+        vector<uint8_t> buf(8);
+        if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+
+
+      }else if(equal(update.begin(), update.end(), buffer.begin())){ //KVUPDATE
+      buffer.clear();
+      bytesUsed =0;
+        x=fread(&keyLen,sizeof(size_t), 1, storage_file );
+        x=fread(&valLen,sizeof(size_t), 1, storage_file );
+
+        vector<uint8_t> keyVec(keyLen);
+        string key="";
+        bytesUsed +=fread(keyVec.data(), sizeof(uint8_t), keyLen, storage_file );
+        //username.insert(username.begin(), usernameVec.begin(), usernameVec.end());
+        key.insert(key.begin(),keyVec.begin(), keyVec.end());
+
+        vector<uint8_t> valVec(valLen);
+        bytesUsed +=fread(valVec.data(), sizeof(uint8_t), valLen, storage_file );
+
+        this->kv_store->upsert(key, valVec, [&](){},[&](){});
+
+        //if(!check){ return result_t{false, RES_ERR_SERVER, {}};}
+        vector<uint8_t> buf(8);
+        if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+
+      }else if(equal(del.begin(), del.end(), buffer.begin())){ //KVDELETE
+      buffer.clear();
+      bytesUsed =0;
+        x=fread(&keyLen,sizeof(size_t), 1, storage_file );
+
+        vector<uint8_t> keyVec(keyLen);
+        string key="";
+        bytesUsed +=fread(keyVec.data(), sizeof(uint8_t), keyLen, storage_file );
+        key.insert(key.begin(),keyVec.begin(), keyVec.end());
+        bool check = this->kv_store->remove(key, [&]() {});
+
+        //cout<<"KVDELETE"<<endl;
+        if(!check){ return result_t{false, RES_ERR_SERVER, {}};}
+        vector<uint8_t> buf(8);
+        if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
+      }
+
+      buffer.clear();
+      x=0;
+      x=fread(buffer.data(),sizeof(char), 8, storage_file );
+      if(x==8){
+        //equal(AUTHEN.begin(), AUTHEN.end(), buffer.begin())
+        cont = true;
+      }else{
+        cont = false;
+      }
+    }
+    fclose(storage_file);
+    storage_file = fopen(filename.c_str(), "a+");
+    return result_t{true, "Loaded: " + filename, {}};
   };
 };
 

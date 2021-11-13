@@ -179,9 +179,9 @@ public:
     //new_user.username.insert(new_user.username.begin(), usernameVec.begin(), usernameVec.end());
     diff.insert(diff.begin(),AUTHDIFF.begin(), AUTHDIFF.end());
 
-    auto lambdaF = [&](AuthTableEntry &user)
+    auto lambdaF = [&](AuthTableEntry &test)
     {
-      user.content = content;
+      test.content = content;
 
       string padding = "\0";
       int bytesUsed=0;
@@ -189,16 +189,16 @@ public:
       extraLock.lock();
       fwrite(diff.data(), sizeof(char), AUTHDIFF.length(), storage_file);
 
-      size_t userSize = user.username.length();
-      size_t profLen = user.content.size();
+      size_t userSize = test.username.length();
+      size_t profLen = test.content.size();
       fwrite(&userSize, sizeof(size_t), 1, storage_file);
       fwrite(&profLen, sizeof(size_t), 1, storage_file);
 
       vector<uint8_t> usernameVec(userSize);
-      usernameVec.insert(usernameVec.begin(), user.username.begin(), user.username.end());
+      usernameVec.insert(usernameVec.begin(), test.username.begin(), test.username.end());
       bytesUsed += fwrite(usernameVec.data(),sizeof(char), userSize, storage_file );
 
-      if(user.content.size() > 0) bytesUsed += fwrite(user.content.data(), sizeof(uint8_t), profLen, storage_file);
+      if(test.content.size() > 0) bytesUsed += fwrite(test.content.data(), sizeof(uint8_t), profLen, storage_file);
 
       if(!(bytesUsed%8 ==0))fwrite(&padding, sizeof(char), (8-bytesUsed%8), storage_file);
       extraLock.unlock();
