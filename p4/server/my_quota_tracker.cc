@@ -45,6 +45,8 @@ public:
     time(&timer);
     // then from the head of list, check if duration is maximized 
     while (true) {
+      if (quotaTracker.size()==0) // special case
+        break;
       if(difftime(timer,quotaTracker.at(0).first) > qDuration) // remove head
         quotaTracker.erase(quotaTracker.begin());
       else
