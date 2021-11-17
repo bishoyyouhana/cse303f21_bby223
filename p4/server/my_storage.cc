@@ -126,11 +126,11 @@ public:
     // NB: the helper (.o provided) does all the work for this operation :)
     add_user_helper(user, pass, auth_table, storage_file);
 
-    Quotas newQuotas;
-    newQuotas.downloads = quota_factory(down_quota, quota_dur);
-    newQuotas.uploads = quota_factory(up_quota, quota_dur);
-    newQuotas.requests = quota_factory(req_quota, quota_dur);
-    this->quota_table->insert(user, &newQuotas,[](){});
+    Quotas *newQuotas=new Quotas() ;
+    newQuotas->downloads = quota_factory(down_quota, quota_dur);
+    newQuotas->uploads = quota_factory(up_quota, quota_dur);
+    newQuotas->requests = quota_factory(req_quota, quota_dur);
+    this->quota_table->insert(user, newQuotas,[](){});
 
     return result_t{true, RES_OK, {}};
   }
@@ -145,7 +145,7 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t set_user_data(const string &user, const string &pass,
                                  const vector<uint8_t> &content) {
-                                   cout << "set_user_data\n";
+                                   //cout << "set_user_data\n";
     // NB: the helper (.o provided) does all the work for this operation :)
     return set_user_data_helper(user, pass, content, auth_table, storage_file);
   }
@@ -199,40 +199,34 @@ public:
   virtual result_t kv_insert(const string &user, const string &pass,
                              const string &key, const vector<uint8_t> &val) {
 
-    cout<<"HEEEEEEEEEEEEEEEEEEEEEEEEELP"<<endl;
-
     auto allow = this->auth(user, pass); //think about changing to tuple
     if (!allow.succeeded)  return result_t{false, RES_ERR_LOGIN, {}};
 
     bool quota_req_err = false;
     bool quota_up_err =false;
-    cout<<"helo"<<endl;
+
     auto lambdaF = [&](Quotas *q)
     {
-      cout<<"helo"<<endl;
       if(!q->requests->check_add(1)) quota_req_err = true;
-      cout<<"helo"<<endl;
-      if(!q->uploads->check_add(val.size())) quota_up_err = true;
+      if(!quota_req_err){if(!q->uploads->check_add(val.size())) quota_up_err = true;}
     };
 
-    cout<<"helo"<<endl;
     if(this->quota_table->do_with(user, lambdaF)==0) return result_t{false, RES_ERR_SERVER, {}};
     if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
     if(quota_up_err) return result_t{false, RES_ERR_QUOTA_UP, {}};
 
-    cout<<"helo"<<endl;
     if(this->kv_store->insert(key,val, [&](){
       //auth.clear();
       this->mru->insert(key);
-      extraLock.lock(); //probably not needed
+      //extraLock.lock(); //probably not needed
       log_sv(storage_file, KVENTRY,key , val);   //log_sv(FILE *logfile, const std::string &delim, const std::string &s1, const std::vector<uint8_t> &v1);
-      extraLock.unlock();
+      //extraLock.unlock();
 
       fflush(storage_file);
       fsync(fileno(storage_file));
 
     })) return result_t{true, RES_OK, {}}; 
-    cout<<"helo"<<endl;
+    //cout<<"helo"<<endl;
     return result_t{false, RES_ERR_KEY, {}};
     };
 
@@ -245,35 +239,46 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_get(const string &user, const string &pass,
                           const string &key) {
+    //cout<<"kv_get"<<endl;
 
     auto allow = this->auth(user, pass); 
     if (!allow.succeeded)  return result_t{false, RES_ERR_LOGIN, {}};
+    bool quota_req_err =false;
+    bool quota_down =false;
 
     vector<uint8_t> returnValue;
+
+    //main lambda
     auto lambdaf = [&](const vector<uint8_t> &val)
     {
-      this->mru->insert(key);
       returnValue = val;
     };
 
-    bool quota_req_err = false;
-    bool quota_up_err =false;
-    auto lambda2 = [&](Quotas  *q)
-    {
-      if(!q->requests->check_add(1)) quota_req_err = true;
-      
-      if(!q->uploads->check_add(returnValue.size())) quota_up_err = true;
+    //lambda to check requests
+    auto lambdaReq = [&](Quotas  *q){ if(!q->requests->check_add(1)) quota_req_err = true;};
 
+    //lambda to check quota
+    //cout<<returnValue.size()<<endl;
+    auto lambdaDown = [&](Quotas  *q){
+      if(!q->downloads->check_add(returnValue.size())){ 
+        quota_down = true;
+      }
     };
-
-    if(this->quota_table->do_with(user, lambda2)==0) return result_t{false, RES_ERR_SERVER, {}};
+    
+    this->quota_table->do_with(user, lambdaReq);
+    
     if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
-    if(quota_up_err) return result_t{false, RES_ERR_QUOTA_UP, {}};
 
     if ((this->kv_store->do_with_readonly(key, lambdaf)) == 0)
     {
       return result_t{false, RES_ERR_KEY, {}};
     }
+
+    if(this->quota_table->do_with(user, lambdaDown)==0) return result_t{false, RES_ERR_SERVER, {}};
+    if(quota_down) return result_t{false, RES_ERR_QUOTA_DOWN, {}};
+
+
+    this->kv_store->do_with_readonly(key, [&](const vector<uint8_t>){this->mru->insert(key);});
 
     return {true, RES_OK, {returnValue}}; 
   };
@@ -290,7 +295,17 @@ public:
 
     auto allow = this->auth(user, pass); //think about changing to tuple
     if (!allow.succeeded)  return result_t{false, RES_ERR_LOGIN, {}}; 
-    //KVDELETE log_sv(storage_file, KVDELETE,key , val);        
+    //KVDELETE log_sv(storage_file, KVDELETE,key , val); 
+    bool quota_req_err =false;
+
+    auto lambdaReq = [&](Quotas  *q){
+      if(!q->requests->check_add(1)) quota_req_err = true;
+    };
+
+
+    this->quota_table->do_with(user, lambdaReq);
+
+    if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
 
     if(this->kv_store->remove(key, [&](){
       this->mru->remove(key);
@@ -323,7 +338,7 @@ public:
 auto lambdaF = [&](Quotas  *q)
     {
       if(!q->requests->check_add(1)) quota_req_err = true;
-      if(!q->uploads->check_add(val.size())) quota_up_err = true;
+      if(!quota_req_err){if(!q->uploads->check_add(val.size())) quota_up_err = true;}
     };
 
     if(this->quota_table->do_with(user, lambdaF)==0) return result_t{false, RES_ERR_SERVER, {}};
@@ -356,25 +371,32 @@ log_sv(storage_file, KVUPDATE, key, val);
 
     vector<uint8_t> returnValue;
 
+    bool quota_req_err = false;
+    bool quota_down =false;
+
+    auto lambdaReq = [&](Quotas  *q){
+      if(!q->requests->check_add(1)) quota_req_err = true;
+    };
+
+    auto lambdaDown = [&](Quotas  *q)
+    {
+      if(!q->downloads->check_add(returnValue.size())) quota_down = true;
+    };
+
+    this->quota_table->do_with(user, lambdaReq);
+    if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
+
+    
+    //main
     kv_store->do_all_readonly([&](string key, vector<uint8_t>){
       returnValue.insert(returnValue.end(), key.begin(), key.end());
       returnValue.push_back('\n');
     }, [](){});
     returnValue.pop_back();
 
-    bool quota_req_err = false;
-    bool quota_up_err =false;
 
-    auto lambdaF = [&](Quotas  *q)
-    {
-      if(!q->requests->check_add(1)) quota_req_err = true;
-      
-      if(!q->downloads->check_add(returnValue.size()/2)) quota_up_err = true;
-    };
-
-    if(this->quota_table->do_with(user, lambdaF)==0) return result_t{false, RES_ERR_SERVER, {}};
-    if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
-    if(quota_up_err) return result_t{false, RES_ERR_QUOTA_UP, {}};
+    if(this->quota_table->do_with(user, lambdaDown)==0) return result_t{false, RES_ERR_SERVER, {}};
+    if(quota_down) return result_t{false, RES_ERR_QUOTA_DOWN, {}};
 
 
     if(returnValue.size() == 0) {
@@ -391,13 +413,34 @@ log_sv(storage_file, KVUPDATE, key, val);
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_top(const string &user, const string &pass) {
-    //cout << "my_storage.cc::kv_top() is not implemented\n";
-    // NB: These asserts are to prevent compiler warnings.. you can delete them
-    //     when you implement this method
-    //string rv = this->fields->mru.get();
-    //assert(user.length() > 0);
-    //assert(pass.length() > 0);
-    //return {false, RES_ERR_UNIMPLEMENTED, {}};
+    auto allow = auth(user, pass);
+    if (!allow.succeeded) return result_t{false, RES_ERR_LOGIN, {}};
+
+    string returnVal="";
+
+    bool quota_req_err = false;
+    bool quota_down =false;
+
+    //lambda to check requests
+    auto lambdaReq = [&](Quotas  *q){ if(!q->requests->check_add(1)) quota_req_err = true;};
+
+    //lambda to check quota
+    auto lambdaDown = [&](Quotas  *q){if(!q->downloads->check_add(returnVal.size())) quota_down = true;};
+
+    this->quota_table->do_with(user, lambdaReq);
+    if(quota_req_err) return result_t{false, RES_ERR_QUOTA_REQ, {}};
+    returnVal=this->mru->get();
+
+    this->quota_table->do_with(user, lambdaDown);
+    if(quota_down) return result_t{false, RES_ERR_QUOTA_DOWN, {}};
+
+    if(returnVal.size()==0) return result_t{false, RES_ERR_NO_DATA, {}};
+
+    vector<uint8_t> returnValue;
+    returnValue.insert(returnValue.begin(), returnVal.begin(), returnVal.end());
+
+    return result_t{true, RES_OK, returnValue};
+
   };
 
   /// Shut down the storage when the server stops.  This method needs to close
@@ -405,7 +448,7 @@ log_sv(storage_file, KVUPDATE, key, val);
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
-    cout << "shutdown\n";
+    //cout << "shutdown\n";
     // NB: Based on how the other methods are implemented in the helper file, we
     //     need this command here:
     fclose(storage_file);
@@ -418,7 +461,7 @@ log_sv(storage_file, KVUPDATE, key, val);
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t save_file() {
-    cout << "save_file\n";
+    //cout << "save_file\n";
     // NB: the helper (.o provided) does all the work for this operation :)
     return save_file_helper(auth_table, kv_store, filename, storage_file);
   }
@@ -502,11 +545,11 @@ log_sv(storage_file, KVUPDATE, key, val);
         vector<uint8_t> buf(8);
         if((bytesUsed%8)>0) x=fread(buf.data(),sizeof(char), (8-bytesUsed%8), storage_file);
         
-        Quotas newQuotas;
-        newQuotas.downloads = quota_factory(down_quota, quota_dur);
-        newQuotas.uploads = quota_factory(up_quota, quota_dur);
-        newQuotas.requests = quota_factory(req_quota, quota_dur);
-        this->quota_table->insert(new_user.username, &newQuotas,[&](){});
+        Quotas *newQuotas = new Quotas();
+        newQuotas->downloads = quota_factory(down_quota, quota_dur);
+        newQuotas->uploads = quota_factory(up_quota, quota_dur);
+        newQuotas->requests = quota_factory(req_quota, quota_dur);
+        this->quota_table->insert(new_user.username, newQuotas,[&](){});
 
         bool check = auth_table->insert(new_user.username, new_user, [&]() {});     
         bytesUsed =0;
