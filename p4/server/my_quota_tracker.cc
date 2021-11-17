@@ -28,7 +28,8 @@ public:
   }
 
   /// Destruct a quota tracker
-  virtual ~my_quota_tracker() {}
+  virtual ~my_quota_tracker() {
+  }
 
   /// Decide if a new event is permitted, and if so, add it.  The attempt is
   /// allowed if it could be added to events, while ensuring that the sum of

@@ -89,6 +89,10 @@ public:
   /// Destructor for the storage object.
   virtual ~MyStorage() {
     // TODO: you probably want to free some memory here...
+    delete mru;
+    delete auth_table;
+    delete kv_store;
+    delete quota_table;
   }
 
   virtual vector<uint8_t> hash_pass(string pass, vector<uint8_t> &salt)
