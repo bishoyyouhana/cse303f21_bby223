@@ -316,7 +316,7 @@ public:
       log_s(storage_file, KVDELETE,key);  
     })) return {true, RES_OK, {}}; 
     
-    return {false, RES_ERR_SERVER, {}};                  
+    return {false, RES_ERR_KEY, {}};                  
       
   };
 
@@ -438,7 +438,7 @@ log_sv(storage_file, KVUPDATE, key, val);
     this->quota_table->do_with(user, lambdaDown);
     if(quota_down) return result_t{false, RES_ERR_QUOTA_DOWN, {}};
 
-    if(returnVal.size()==0) return result_t{false, RES_ERR_NO_DATA, {}};
+    if(returnVal.compare("")==0) return result_t{false, RES_ERR_NO_DATA, {}};
 
     vector<uint8_t> returnValue;
     returnValue.insert(returnValue.begin(), returnVal.begin(), returnVal.end());

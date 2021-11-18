@@ -12,7 +12,7 @@ using namespace std;
 class my_mru : public mru_manager {
 
 std::deque<std::string> mru;
-std::mutex lock;
+std::mutex mtx;
 size_t numTrack;
 
 public:
@@ -31,19 +31,23 @@ public:
   ///
   /// @param elt The element to insert
   virtual void insert(const std::string &elt) {
-    lock.lock();
-    // do linear search, which is O(n)
-    // also check size of deque to see if not past numTrack
-    for(auto it = mru.begin(); it != mru.end(); it++) {
-      if ((*it).compare(elt) == 0) {
-        mru.erase(it);
-        break;
-      }
+    const std::lock_guard<std::mutex> lock(mtx);
+    if (mru.empty()) {
+      mru.emplace_back(elt);
     }
-    if (mru.size() == numTrack) // if all ready at max size, then erase head
-      mru.erase(mru.begin());
-    mru.emplace_back(elt);
-    lock.unlock();
+    else {
+      // do linear search, which is O(n)
+      // also check size of deque to see if not past numTrack
+      for(auto it = mru.begin(); it != mru.end(); it++) {
+        if ((*it).compare(elt) == 0) {
+          mru.erase(it);
+          break;
+        }
+      }
+      if (mru.size() == numTrack) // if all ready at max size, then erase head
+        mru.erase(mru.begin());
+      mru.emplace_back(elt);
+    }
   }
 
   /// Remove an instance of an element from the mru_manager.  This can leave the
@@ -51,38 +55,40 @@ public:
   ///
   /// @param elt The element to remove
   virtual void remove(const std::string &elt) {
-    lock.lock();
-    // do linear search, if element is there remove
-    for(auto it = mru.begin(); it != mru.end(); it++) {
-      if ((*it).compare(elt) == 0) {
-        mru.erase(it);
-        break;
+    const std::lock_guard<std::mutex> lock(mtx);
+    if (!mru.empty()) {
+      // do linear search, if element is there remove
+      for(auto it = mru.begin(); it != mru.end(); it++) {
+        if ((*it).compare(elt) == 0) {
+          mru.erase(it);
+          break;
+        }
       }
     }
-    lock.unlock();
   }
 
   /// Clear the mru_manager
   virtual void clear() {
-    lock.lock();
+    const std::lock_guard<std::mutex> lock(mtx);
     mru.clear();
-    lock.unlock();
   }
 
   /// Produce a concatenation of the top entries, in order of popularity
   ///
   /// @return A newline-separated list of values
   virtual std::string get() {
-    lock.lock();
+    const std::lock_guard<std::mutex> lock(mtx);
     // create a final string
     std::string result = "";
+    if (mru.empty())
+      return result;
     // loop throug mru and add string value from tail (recently used).
      for(auto it = mru.end()-1; it != mru.begin(); it--) {
        result = result + (*it) + "\n";
      }
      // print head of deque
-     result = result + mru.at(0) + "\n";
-     lock.unlock();
+     if (!mru.empty())
+      result = result + mru.at(0) + "\n";
      return result;
   }
 };
