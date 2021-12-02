@@ -261,28 +261,34 @@ public:
   ///
   /// @return A boolean that indicates the success of the process
   bool child_process(int input_fd, int output_fd, map_func mapping, reduce_func reducing){
+    vector<vector<uint8_t>> reduceInput;
+    //vector<uint8_t> reduceInput;
 
-
+cout<<"child"<<endl;
     //read
     while(true){
       //key
-      int key_len;
+      size_t key_len;
+    
       int readBytes = read(input_fd, &key_len, sizeof(size_t));
       if (readBytes == 0) break;
-
+cout<<key_len<<endl;
       char key[key_len];
       readBytes = read(input_fd, key, key_len);
+      cout<<key<<endl;
 
       //value
-      int val_len;
+      size_t val_len;
       readBytes = read(input_fd, &val_len, sizeof(size_t));
       if (readBytes == 0) break;
+      cout<<val_len<<endl;
  
       char val[val_len];
       readBytes = read(input_fd, val, val_len);
+      cout<<val<<endl;
 
 
-
+ 
       string string_key(key, key_len);
       string string_val(val, val_len);
       vector<uint8_t> val_vec;
@@ -293,12 +299,18 @@ public:
       vector<uint8_t> mapresult;  // got lost from this point
       mapresult = mapping(string_key, val_vec);
 
+      reduceInput.push_back(mapresult);
+
       
     
       }
-    close(input_fd);
+close(input_fd);
+      vector<uint8_t> reduceResult = reducing(reduceInput);
+    
 
     //write
+
+    write(output_fd, reduceResult.data(), reduceResult.size());
 
 
     close(output_fd);
@@ -318,10 +330,13 @@ public:
     
     auto allow = this->auth(user, pass); //think about changing to tuple
     if (!allow.succeeded)   return result_t{false, RES_ERR_LOGIN, {}};
+    
 
     std::pair<map_func, reduce_func> func_mr = funcs->get_mr(mrname);
-
+cout<<"hello1"<<endl;
+    
     //some pipes for communication
+    //0 is for reading and 1 is for writing
     int parentPipe[2];
     int childPipe[2];
     if (pipe(parentPipe) == -1)  return {false, RES_ERR_SERVER, {}};
@@ -330,7 +345,7 @@ public:
     pid_t pid =fork();
     pid_t wait; 
     int status;
-
+cout<<"hello2"<<endl;
     //start forking
     if (pid < 0) {
       return {false, RES_ERR_SERVER, {}};
@@ -344,17 +359,18 @@ public:
       //we need key and value of the key, therefore we need size 
       //format we are using: keySize, key, valueSize, val
       kv_store->do_all_readonly([&](string key, const vector<uint8_t> val) {  
+        
         size_t keyLen = key.length();
         size_t valLen = val.size();
         write(parentPipe[1], &keyLen, sizeof(key.length()));
         write(parentPipe[1], key.c_str(),  key.length());
         write(parentPipe[1], &valLen, sizeof(val.size()));
-        write(parentPipe[1], val.data(), val.size());
+        write(parentPipe[1], val.data(), val.size()); 
 
       }, [&]() {});
 
       close(parentPipe[1]);
-
+      cout<<"hello3"<<endl;
       //wait for msg
       int status;
       if((wait = waitpid(pid, &status, WUNTRACED | WCONTINUED)) == -1){
@@ -369,13 +385,13 @@ public:
       //reading from the child
       int size;
       read(childPipe[0], &size, sizeof(size_t));
-
+cout<<"hello3"<<endl;
       vector<uint8_t> childReturn(size);
       read(childPipe[0], childReturn.data(), childReturn.size());
     close(parentPipe[0]);
     close(childPipe[1]);
     close(childPipe[0]);
-    return {false, RES_OK, childReturn}; ///?????????????????????????????????????????????????????
+    return {true, RES_OK, childReturn}; ///?????????????????????????????????????????????????????
 
     }else{ //child process
       //close pipe for parent write and children write
@@ -383,14 +399,15 @@ public:
     close(childPipe[0]);
     //use child_mr here
     if (child_process(parentPipe[0], childPipe[1], func_mr.first, func_mr.second)){
-      //success
+      return {true, RES_OK, {}};
 	}
     else{
       //problem
+      return {false, RES_ERR_SERVER, {}};
 	}
     }
 
-    return {false, RES_OK, {}};
+    return {true, RES_OK, {}};
   }
 
   /// Shut down the storage when the server stops.  This method needs to close
