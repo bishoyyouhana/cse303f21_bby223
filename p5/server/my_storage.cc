@@ -204,7 +204,7 @@ public:
     return kv_upsert_helper(user, pass, key, val, auth_table, kv_store,
                             storage_file, mru, up_quota, down_quota, req_quota,
                             quota_dur, quota_table);
-  };
+  }; 
 
   /// Return all of the keys in the kv_store, as a "\n"-delimited string
   ///
@@ -246,9 +246,64 @@ public:
     auto allow = this->auth(user, pass); //think about changing to tuple
     if (!allow.succeeded)   return result_t{false, RES_ERR_LOGIN, {}};
 
+    if (funcs->get_mr(mrname).first != nullptr) return result_t{false, RES_ERR_FUNC, {}};
+ 
     string returnValue = funcs->register_mr(mrname, so);
     return {false, returnValue, {}};
   };
+
+  /// Helper function that runs the child process for invoke_mr 
+  ///
+  /// @param input_fd   fd to read data from
+  /// @param output_fd  fd to write data to
+  /// @param mapping    the map function to run
+  /// @param reducing   the reduce function to run
+  ///
+  /// @return A boolean that indicates the success of the process
+  bool child_process(int input_fd, int output_fd, map_func mapping, reduce_func reducing){
+
+
+    //read
+    while(true){
+      //key
+      int key_len;
+      int readBytes = read(input_fd, &key_len, sizeof(size_t));
+      if (readBytes == 0) break;
+
+      char key[key_len];
+      readBytes = read(input_fd, key, key_len);
+
+      //value
+      int val_len;
+      readBytes = read(input_fd, &val_len, sizeof(size_t));
+      if (readBytes == 0) break;
+ 
+      char val[val_len];
+      readBytes = read(input_fd, val, val_len);
+
+
+
+      string string_key(key, key_len);
+      string string_val(val, val_len);
+      vector<uint8_t> val_vec;
+      val_vec.insert(val_vec.begin(),string_val.begin(), string_val.end());
+
+
+
+      vector<uint8_t> mapresult;  // got lost from this point
+      mapresult = mapping(string_key, val_vec);
+
+      
+    
+      }
+    close(input_fd);
+
+    //write
+
+
+    close(output_fd);
+    return true;
+  }
 
   /// Run a map/reduce on all the key/value tuples of the kv_store
   ///
@@ -259,7 +314,81 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t invoke_mr(const string &user, const string &pass,
                              const string &mrname) {
+    //if(admin_name!=user) return result_t{false, RES_ERR_LOGIN, {}};
     
+    auto allow = this->auth(user, pass); //think about changing to tuple
+    if (!allow.succeeded)   return result_t{false, RES_ERR_LOGIN, {}};
+
+    std::pair<map_func, reduce_func> func_mr = funcs->get_mr(mrname);
+
+    //some pipes for communication
+    int parentPipe[2];
+    int childPipe[2];
+    if (pipe(parentPipe) == -1)  return {false, RES_ERR_SERVER, {}};
+    if (pipe(childPipe) == -1)  return {false, RES_ERR_SERVER, {}};
+    
+    pid_t pid =fork();
+    pid_t wait; 
+    int status;
+
+    //start forking
+    if (pid < 0) {
+      return {false, RES_ERR_SERVER, {}};
+    }
+    else if(pid>0){ //parent process
+      //lose reading end of parent pipe amd write end of child pipe
+      close(parentPipe[0]);
+      close(childPipe[1]);
+      //vector<uint8_t> returnValue;
+
+      //we need key and value of the key, therefore we need size 
+      //format we are using: keySize, key, valueSize, val
+      kv_store->do_all_readonly([&](string key, const vector<uint8_t> val) {  
+        size_t keyLen = key.length();
+        size_t valLen = val.size();
+        write(parentPipe[1], &keyLen, sizeof(key.length()));
+        write(parentPipe[1], key.c_str(),  key.length());
+        write(parentPipe[1], &valLen, sizeof(val.size()));
+        write(parentPipe[1], val.data(), val.size());
+
+      }, [&]() {});
+
+      close(parentPipe[1]);
+
+      //wait for msg
+      int status;
+      if((wait = waitpid(pid, &status, WUNTRACED | WCONTINUED)) == -1){
+        return {false, RES_ERR_SERVER, {}};//return server error
+      }
+
+      int status2;
+      if((status2 = WIFEXITED(status))){
+        if(status2 != 0) return {false, RES_ERR_SERVER, {}};
+      }
+
+      //reading from the child
+      int size;
+      read(childPipe[0], &size, sizeof(size_t));
+
+      vector<uint8_t> childReturn(size);
+      read(childPipe[0], childReturn.data(), childReturn.size());
+    close(parentPipe[0]);
+    close(childPipe[1]);
+    close(childPipe[0]);
+    return {false, RES_OK, childReturn}; ///?????????????????????????????????????????????????????
+
+    }else{ //child process
+      //close pipe for parent write and children write
+    close(parentPipe[1]);
+    close(childPipe[0]);
+    //use child_mr here
+    if (child_process(parentPipe[0], childPipe[1], func_mr.first, func_mr.second)){
+      //success
+	}
+    else{
+      //problem
+	}
+    }
 
     return {false, RES_OK, {}};
   }
