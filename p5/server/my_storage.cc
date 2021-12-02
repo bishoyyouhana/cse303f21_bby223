@@ -240,16 +240,14 @@ public:
   virtual result_t register_mr(const string &user, const string &pass,
                                const string &mrname,
                                const vector<uint8_t> &so) {
-    cout << "my_storage.cc::register_mr() is not implemented\n";
+    
+    if(admin_name!=user) return result_t{false, RES_ERR_LOGIN, {}};
+    
+    auto allow = this->auth(user, pass); //think about changing to tuple
+    if (!allow.succeeded)   return result_t{false, RES_ERR_LOGIN, {}};
 
-    // NB: These asserts are to prevent compiler warnings.  You can remove them
-    //     once the method is implemented.
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    assert(mrname.length() > 0);
-    assert(so.size() > 0);
-
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    string returnValue = funcs->register_mr(mrname, so);
+    return {false, returnValue, {}};
   };
 
   /// Run a map/reduce on all the key/value tuples of the kv_store
@@ -261,15 +259,9 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t invoke_mr(const string &user, const string &pass,
                              const string &mrname) {
-    cout << "my_storage.cc::invoke_mr() is not implemented\n";
+    
 
-    // NB: These asserts are to prevent compiler warnings.  You can remove them
-    //     once the method is implemented.
-    assert(user.length() > 0);
-    assert(pass.length() > 0);
-    assert(mrname.length() > 0);
-
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    return {false, RES_OK, {}};
   }
 
   /// Shut down the storage when the server stops.  This method needs to close
@@ -277,7 +269,8 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
-    cout << "my_storage.cc::shutdown() is not implemented\n";
+    fclose(storage_file);
+    //cout << "my_storage.cc::shutdown() is not implemented\n";
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To
