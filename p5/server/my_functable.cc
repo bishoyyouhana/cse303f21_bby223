@@ -31,6 +31,8 @@ struct func {
 };
 unordered_map<std::string, func> umap;
 
+std::shared_mutex mtx;
+
 public:
   /// Construct a function table for storing registered functions
   my_functable() {}
@@ -48,7 +50,8 @@ public:
   virtual std::string register_mr(const std::string &mrname,
                                   const std::vector<uint8_t> &so) {
     //cout << "my_functable.cc::register_mr() not implemented\n";
-    
+    // only one thread can register a new func
+    const std::lock_guard<std::shared_mutex> lock(mtx);
     // check the map and see if mrname is already registered.
     // https://stackoverflow.com/questions/22880431/iterate-through-unordered-map-c
     for (const auto & [ key, value ] : umap) {
@@ -56,7 +59,7 @@ public:
         return RES_ERR_FUNC;
     }
     // name temp file
-    std::string temps = SO_PREFIX + "/" + mrname;
+    std::string temps = SO_PREFIX + mrname;
     const char* temp = temps.c_str();
     // fill file with content of so
     write_file(temp, so, 0);
@@ -92,15 +95,17 @@ public:
 
     // NB: This assert is to prevent compiler warnings.  You can remove them
     //     once the method is implemented.
-
+    // multiple threads can read get
+    const std::lock_guard<std::shared_mutex> shared_lock(mtx);
     // search through map to find name
+    if (umap.empty()) 
+      return {nullptr, nullptr};
     for (const auto & [ key, value] : umap) {
       if (key.compare(mrname)==0) { // key is found, return pointers
         return {value.map, value.reduce};
       }
     }
     // no mrname in map, return error
-
     return {nullptr, nullptr};
   }
 

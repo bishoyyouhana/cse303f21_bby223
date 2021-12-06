@@ -266,7 +266,7 @@ public:
 
 cout<<"child"<<endl;
     //read
-    while(true){
+    while(true){ // code breaks here, infinite loop
       //key
       size_t key_len;
     
