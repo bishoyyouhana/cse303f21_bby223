@@ -266,54 +266,56 @@ public:
 
 cout<<"child"<<endl;
     //read
-    while(true){ // code breaks here, infinite loop
+    while(true){
       //key
       size_t key_len;
     
       int readBytes = read(input_fd, &key_len, sizeof(size_t));
       if (readBytes == 0) break;
-cout<<key_len<<endl;
+// cout<<"This is the key length " << key_len<<endl;
       char key[key_len];
       readBytes = read(input_fd, key, key_len);
-      cout<<key<<endl;
+      //cout<<"This is the key " << key<<endl;
 
       //value
       size_t val_len;
       readBytes = read(input_fd, &val_len, sizeof(size_t));
       if (readBytes == 0) break;
-      cout<<val_len<<endl;
+      //cout<<val_len<<endl;
  
       char val[val_len];
       readBytes = read(input_fd, val, val_len);
-      cout<<val<<endl;
+      //cout<<val<<endl;
 
-
- 
       string string_key(key, key_len);
       string string_val(val, val_len);
       vector<uint8_t> val_vec;
       val_vec.insert(val_vec.begin(),string_val.begin(), string_val.end());
 
-
-
-      vector<uint8_t> mapresult;  // got lost from this point
-      mapresult = mapping(string_key, val_vec);
-
+      vector<uint8_t> mapresult = mapping(string_key, val_vec);
       reduceInput.push_back(mapresult);
 
-      
+      cout << "Inside Child\n";
     
       }
+      cout << "outloop\n";
 close(input_fd);
       vector<uint8_t> reduceResult = reducing(reduceInput);
-    
+      // reduceResult.resize(100);
+      /*string hi = "hello";
+      vector<uint8_t> test;
+      test.insert(test.begin(), hi.begin(), hi.end()); */
 
-    //write
-
+    //write (output, size, sizeof(size_t))
+    // write the size of the data first
+    size_t size = reduceResult.size();
+    vector<uint8_t> vectorSize;
+    vectorSize.insert(vectorSize.end(), (uint8_t*) &size, ((uint8_t*) &size) + sizeof(size));
+    write(output_fd, vectorSize.data(), sizeof(size_t));
     write(output_fd, reduceResult.data(), reduceResult.size());
 
-
     close(output_fd);
+    cout << "end of child\n";
     return true;
   }
 
@@ -333,7 +335,11 @@ close(input_fd);
     
 
     std::pair<map_func, reduce_func> func_mr = funcs->get_mr(mrname);
-cout<<"hello1"<<endl;
+    // check if null, then functions don't exist
+    if (func_mr.first==nullptr || func_mr.second==nullptr) {
+      return {false, RES_ERR_SERVER, {}};
+    }
+//cout<<"hello1"<<endl;
     
     //some pipes for communication
     //0 is for reading and 1 is for writing
@@ -345,7 +351,7 @@ cout<<"hello1"<<endl;
     pid_t pid =fork();
     pid_t wait; 
     int status;
-cout<<"hello2"<<endl;
+//cout<<"hello2"<<endl;
     //start forking
     if (pid < 0) {
       return {false, RES_ERR_SERVER, {}};
@@ -376,21 +382,24 @@ cout<<"hello2"<<endl;
       if((wait = waitpid(pid, &status, WUNTRACED | WCONTINUED)) == -1){
         return {false, RES_ERR_SERVER, {}};//return server error
       }
-
+      cout<<"hello69\n";
       int status2;
       if((status2 = WIFEXITED(status))){
-        if(status2 != 0) return {false, RES_ERR_SERVER, {}};
+        if(status2 < 0) return {false, RES_ERR_SERVER, {}};
       }
+      cout << "hi78\n";
 
       //reading from the child
-      int size;
-      read(childPipe[0], &size, sizeof(size_t));
-cout<<"hello3"<<endl;
-      vector<uint8_t> childReturn(size);
-      read(childPipe[0], childReturn.data(), childReturn.size());
+      size_t theSize;
+      read(childPipe[0], &theSize, sizeof(size_t));
+      vector<uint8_t> childReturn(theSize);
+      read(childPipe[0], childReturn.data(), theSize);
+      //childReturn.resize(size);
+      cout<<"hehe\n";
     close(parentPipe[0]);
     close(childPipe[1]);
     close(childPipe[0]);
+    cout << "yooo\n";
     return {true, RES_OK, childReturn}; ///?????????????????????????????????????????????????????
 
     }else{ //child process
@@ -398,13 +407,19 @@ cout<<"hello3"<<endl;
     close(parentPipe[1]);
     close(childPipe[0]);
     //use child_mr here
+    /*if (!child_process(parentPipe[0], childPipe[1], func_mr.first, func_mr.second)) {
+      return {false, RES_ERR_SERVER, {}};
+    } */
     if (child_process(parentPipe[0], childPipe[1], func_mr.first, func_mr.second)){
-      return {true, RES_OK, {}};
+      exit(EXIT_SUCCESS);
+      //return {true, RES_OK, {}};
 	}
     else{
       //problem
-      return {false, RES_ERR_SERVER, {}};
-	}
+      exit(EXIT_FAILURE);
+      //return {false, RES_ERR_SERVER, {}};
+	} 
+    //cout << "The real end of child\n";
     }
 
     return {true, RES_OK, {}};
