@@ -264,7 +264,9 @@ public:
     vector<vector<uint8_t>> reduceInput;
     //vector<uint8_t> reduceInput;
 
-cout<<"child"<<endl;
+//cout<<"child"<<endl;
+    //if(prctl(PR_SET_SECCOMP, SECCOMP_MODE_STRICT)==-1) return false;
+    prctl(PR_SET_SECCOMP, SECCOMP_MODE_STRICT);
     //read
     while(true){
       //key
@@ -272,7 +274,7 @@ cout<<"child"<<endl;
     
       int readBytes = read(input_fd, &key_len, sizeof(size_t));
       if (readBytes == 0) break;
-// cout<<"This is the key length " << key_len<<endl;
+ cout<<"This is the key length " << key_len<<endl;
       char key[key_len];
       readBytes = read(input_fd, key, key_len);
       //cout<<"This is the key " << key<<endl;
@@ -281,7 +283,7 @@ cout<<"child"<<endl;
       size_t val_len;
       readBytes = read(input_fd, &val_len, sizeof(size_t));
       if (readBytes == 0) break;
-      //cout<<val_len<<endl;
+      cout<<val_len<<endl;
  
       char val[val_len];
       readBytes = read(input_fd, val, val_len);
@@ -295,11 +297,11 @@ cout<<"child"<<endl;
       vector<uint8_t> mapresult = mapping(string_key, val_vec);
       reduceInput.push_back(mapresult);
 
-      cout << "Inside Child\n";
+      //cout << "Inside Child\n";
     
       }
-      cout << "outloop\n";
-close(input_fd);
+      //cout << "outloop\n";
+
       vector<uint8_t> reduceResult = reducing(reduceInput);
       // reduceResult.resize(100);
       /*string hi = "hello";
@@ -314,7 +316,7 @@ close(input_fd);
     write(output_fd, vectorSize.data(), sizeof(size_t));
     write(output_fd, reduceResult.data(), reduceResult.size());
 
-    close(output_fd);
+    //close(output_fd);
     cout << "end of child\n";
     return true;
   }
@@ -378,30 +380,43 @@ close(input_fd);
       close(parentPipe[1]);
       cout<<"hello3"<<endl;
       //wait for msg
+      /*
       int status;
-      if((wait = waitpid(pid, &status, WUNTRACED | WCONTINUED)) == -1){
-        return {false, RES_ERR_SERVER, {}};//return server error
-      }
+      if(waitpid(pid, &status, WUNTRACED | WCONTINUED)>10000) return {false, RES_ERR_SERVER, {}};//return server error
+      
       cout<<"hello69\n";
       int status2;
       if((status2 = WIFEXITED(status))){
         if(status2 < 0) return {false, RES_ERR_SERVER, {}};
       }
       cout << "hi78\n";
-
+*/
       //reading from the child
       size_t theSize;
       read(childPipe[0], &theSize, sizeof(size_t));
       vector<uint8_t> childReturn(theSize);
       read(childPipe[0], childReturn.data(), theSize);
       //childReturn.resize(size);
-      cout<<"hehe\n";
+
+
+      //wait for msg
+      int status;
+      if(waitpid(pid, &status, WUNTRACED | WCONTINUED)>10000) return {false, RES_ERR_SERVER, {}};//return server error
+      
+      cout<<"hello69\n";
+      int status2;
+      if((status2 = WIFEXITED(status))){
+        if(status2 < 0) return {false, RES_ERR_SERVER, {}};
+      }
+
+
+      cout<<theSize<<endl;
     close(parentPipe[0]);
     close(childPipe[1]);
     close(childPipe[0]);
     cout << "yooo\n";
-    return {true, RES_OK, childReturn}; ///?????????????????????????????????????????????????????
-
+    return {true, RES_OK, childReturn}; 
+    
     }else{ //child process
       //close pipe for parent write and children write
     close(parentPipe[1]);
@@ -422,7 +437,7 @@ close(input_fd);
     //cout << "The real end of child\n";
     }
 
-    return {true, RES_OK, {}};
+    return {false, RES_ERR_SERVER, {}};
   }
 
   /// Shut down the storage when the server stops.  This method needs to close
