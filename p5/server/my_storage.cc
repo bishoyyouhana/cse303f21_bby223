@@ -23,7 +23,8 @@
 using namespace std;
 
 /// MyStorage is the student implementation of the Storage class
-class MyStorage : public Storage {
+class MyStorage : public Storage
+{
   /// The map of authentication information, indexed by username
   Map<string, AuthTableEntry> *auth_table;
 
@@ -83,8 +84,9 @@ public:
         funcs(functable_factory()) {}
 
   /// Destructor for the storage object.
-  virtual ~MyStorage() {
-    cout << "my_storage.cc::~MyStorage() is not implemented\n";
+  virtual ~MyStorage()
+  {
+    // cout << "my_storage.cc::~MyStorage() is not implemented\n";
   }
 
   /// Create a new entry in the Auth table.  If the user already exists, return
@@ -95,7 +97,8 @@ public:
   /// @param pass The password to associate with that user name
   ///
   /// @return A result tuple, as described in storage.h
-  virtual result_t add_user(const string &user, const string &pass) {
+  virtual result_t add_user(const string &user, const string &pass)
+  {
     return add_user_helper(user, pass, auth_table, storage_file);
   }
 
@@ -108,7 +111,8 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t set_user_data(const string &user, const string &pass,
-                                 const vector<uint8_t> &content) {
+                                 const vector<uint8_t> &content)
+  {
     return set_user_data_helper(user, pass, content, auth_table, storage_file);
   }
 
@@ -122,7 +126,8 @@ public:
   /// @return A result tuple, as described in storage.h.  Note that "no data" is
   ///         an error
   virtual result_t get_user_data(const string &user, const string &pass,
-                                 const string &who) {
+                                 const string &who)
+  {
     return get_user_data_helper(user, pass, who, auth_table);
   }
 
@@ -133,7 +138,8 @@ public:
   /// @param pass The password for the user, used to authenticate
   ///
   /// @return A result tuple, as described in storage.h
-  virtual result_t get_all_users(const string &user, const string &pass) {
+  virtual result_t get_all_users(const string &user, const string &pass)
+  {
     return get_all_users_helper(user, pass, auth_table);
   }
 
@@ -143,7 +149,8 @@ public:
   /// @param pass The password for the user, used to authenticate
   ///
   /// @return A result tuple, as described in storage.h
-  virtual result_t auth(const string &user, const string &pass) {
+  virtual result_t auth(const string &user, const string &pass)
+  {
     return auth_helper(user, pass, auth_table);
   }
 
@@ -156,7 +163,8 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_insert(const string &user, const string &pass,
-                             const string &key, const vector<uint8_t> &val) {
+                             const string &key, const vector<uint8_t> &val)
+  {
     return kv_insert_helper(user, pass, key, val, auth_table, kv_store,
                             storage_file, mru, up_quota, down_quota, req_quota,
                             quota_dur, quota_table);
@@ -170,7 +178,8 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_get(const string &user, const string &pass,
-                          const string &key) {
+                          const string &key)
+  {
     return kv_get_helper(user, pass, key, auth_table, kv_store, mru, up_quota,
                          down_quota, req_quota, quota_dur, quota_table);
   };
@@ -183,7 +192,8 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_delete(const string &user, const string &pass,
-                             const string &key) {
+                             const string &key)
+  {
     return kv_delete_helper(user, pass, key, auth_table, kv_store, storage_file,
                             mru, up_quota, down_quota, req_quota, quota_dur,
                             quota_table);
@@ -200,11 +210,12 @@ public:
   ///         two "OK" messages, depending on whether we get an insert or an
   ///         update.
   virtual result_t kv_upsert(const string &user, const string &pass,
-                             const string &key, const vector<uint8_t> &val) {
+                             const string &key, const vector<uint8_t> &val)
+  {
     return kv_upsert_helper(user, pass, key, val, auth_table, kv_store,
                             storage_file, mru, up_quota, down_quota, req_quota,
                             quota_dur, quota_table);
-  }; 
+  };
 
   /// Return all of the keys in the kv_store, as a "\n"-delimited string
   ///
@@ -212,7 +223,8 @@ public:
   /// @param pass The password for the user, used to authenticate
   ///
   /// @return A result tuple, as described in storage.h
-  virtual result_t kv_all(const string &user, const string &pass) {
+  virtual result_t kv_all(const string &user, const string &pass)
+  {
     return kv_all_helper(user, pass, auth_table, kv_store, up_quota, down_quota,
                          req_quota, quota_dur, quota_table);
   };
@@ -224,7 +236,8 @@ public:
   /// @param pass The password for the user, used to authenticate
   ///
   /// @return A result tuple, as described in storage.h
-  virtual result_t kv_top(const string &user, const string &pass) {
+  virtual result_t kv_top(const string &user, const string &pass)
+  {
     return kv_top_helper(user, pass, auth_table, mru, up_quota, down_quota,
                          req_quota, quota_dur, quota_table);
   };
@@ -239,20 +252,24 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t register_mr(const string &user, const string &pass,
                                const string &mrname,
-                               const vector<uint8_t> &so) {
-    
-    if(admin_name!=user) return result_t{false, RES_ERR_LOGIN, {}};
-    
-    auto allow = this->auth(user, pass); //think about changing to tuple
-    if (!allow.succeeded)   return result_t{false, RES_ERR_LOGIN, {}};
+                               const vector<uint8_t> &so)
+  {
 
-    if (funcs->get_mr(mrname).first != nullptr) return result_t{false, RES_ERR_FUNC, {}};
- 
+    if (admin_name != user)
+      return result_t{false, RES_ERR_LOGIN, {}};
+
+    auto allow = this->auth(user, pass); // think about changing to tuple
+    if (!allow.succeeded)
+      return result_t{false, RES_ERR_LOGIN, {}};
+
+    if (funcs->get_mr(mrname).first != nullptr)
+      return result_t{false, RES_ERR_FUNC, {}};
+
     string returnValue = funcs->register_mr(mrname, so);
     return {false, returnValue, {}};
   };
 
-  /// Helper function that runs the child process for invoke_mr 
+  /// Helper function that runs the child process for invoke_mr
   ///
   /// @param input_fd   fd to read data from
   /// @param output_fd  fd to write data to
@@ -260,64 +277,54 @@ public:
   /// @param reducing   the reduce function to run
   ///
   /// @return A boolean that indicates the success of the process
-  bool child_process(int input_fd, int output_fd, map_func mapping, reduce_func reducing){
+  bool child_process(int input_fd, int output_fd, map_func mapping, reduce_func reducing)
+  {
     vector<vector<uint8_t>> reduceInput;
-    //vector<uint8_t> reduceInput;
+    if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_STRICT) == -1)
+    {
+      // cout<<"seccomp not orking in wsl"<<endl;
+      return false;
+    }
 
-//cout<<"child"<<endl;
-    //if(prctl(PR_SET_SECCOMP, SECCOMP_MODE_STRICT)==-1) return false;
-    prctl(PR_SET_SECCOMP, SECCOMP_MODE_STRICT);
-    //read
-    while(true){
-      //key
+    // read
+    while (true)
+    {
+      // key
       size_t key_len;
-    
       int readBytes = read(input_fd, &key_len, sizeof(size_t));
-      if (readBytes == 0) break;
- cout<<"This is the key length " << key_len<<endl;
+      if (readBytes == 0)
+        break;
+
       char key[key_len];
       readBytes = read(input_fd, key, key_len);
-      //cout<<"This is the key " << key<<endl;
 
-      //value
+      // value
       size_t val_len;
       readBytes = read(input_fd, &val_len, sizeof(size_t));
-      if (readBytes == 0) break;
-      cout<<val_len<<endl;
- 
+      if (readBytes == 0)
+        break;
+
       char val[val_len];
       readBytes = read(input_fd, val, val_len);
-      //cout<<val<<endl;
 
       string string_key(key, key_len);
       string string_val(val, val_len);
       vector<uint8_t> val_vec;
-      val_vec.insert(val_vec.begin(),string_val.begin(), string_val.end());
+      val_vec.insert(val_vec.begin(), string_val.begin(), string_val.end());
 
       vector<uint8_t> mapresult = mapping(string_key, val_vec);
       reduceInput.push_back(mapresult);
+    }
 
-      //cout << "Inside Child\n";
-    
-      }
-      //cout << "outloop\n";
-
-      vector<uint8_t> reduceResult = reducing(reduceInput);
-      // reduceResult.resize(100);
-      /*string hi = "hello";
-      vector<uint8_t> test;
-      test.insert(test.begin(), hi.begin(), hi.end()); */
-
-    //write (output, size, sizeof(size_t))
-    // write the size of the data first
+    vector<uint8_t> reduceResult = reducing(reduceInput);
     size_t size = reduceResult.size();
     vector<uint8_t> vectorSize;
-    vectorSize.insert(vectorSize.end(), (uint8_t*) &size, ((uint8_t*) &size) + sizeof(size));
-    write(output_fd, vectorSize.data(), sizeof(size_t));
-    write(output_fd, reduceResult.data(), reduceResult.size());
+    vectorSize.insert(vectorSize.end(), (uint8_t *)&size, ((uint8_t *)&size) + sizeof(size));
 
-    //close(output_fd);
-    cout << "end of child\n";
+    if (write(output_fd, vectorSize.data(), sizeof(size_t)) ==-1)
+      return false;
+    if (write(output_fd, reduceResult.data(), reduceResult.size()) ==-1)
+      return false;
     return true;
   }
 
@@ -329,124 +336,128 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t invoke_mr(const string &user, const string &pass,
-                             const string &mrname) {
-    //if(admin_name!=user) return result_t{false, RES_ERR_LOGIN, {}};
-    
-    auto allow = this->auth(user, pass); //think about changing to tuple
-    if (!allow.succeeded)   return result_t{false, RES_ERR_LOGIN, {}};
-    
+                             const string &mrname)
+  {
+    // if(admin_name!=user) return result_t{false, RES_ERR_LOGIN, {}};
+    auto allow = this->auth(user, pass); // think about changing to tuple
+    if (!allow.succeeded)
+      return result_t{false, RES_ERR_LOGIN, {}};
 
     std::pair<map_func, reduce_func> func_mr = funcs->get_mr(mrname);
     // check if null, then functions don't exist
-    if (func_mr.first==nullptr || func_mr.second==nullptr) {
+    if (func_mr.first == nullptr || func_mr.second == nullptr)
+    {
       return {false, RES_ERR_SERVER, {}};
     }
-//cout<<"hello1"<<endl;
-    
-    //some pipes for communication
-    //0 is for reading and 1 is for writing
+
+    // some pipes for communication
+    // 0 is for reading and 1 is for writing
     int parentPipe[2];
     int childPipe[2];
-    if (pipe(parentPipe) == -1)  return {false, RES_ERR_SERVER, {}};
-    if (pipe(childPipe) == -1)  return {false, RES_ERR_SERVER, {}};
-    
-    pid_t pid =fork();
-    pid_t wait; 
-    int status;
-//cout<<"hello2"<<endl;
-    //start forking
-    if (pid < 0) {
+    if (pipe(parentPipe) == -1)
+      return {false, RES_ERR_SERVER, {}};
+    if (pipe(childPipe) == -1)
+      return {false, RES_ERR_SERVER, {}};
+
+    pid_t pid = fork();
+
+    if (pid < 0)
+    {
       return {false, RES_ERR_SERVER, {}};
     }
-    else if(pid>0){ //parent process
-      //lose reading end of parent pipe amd write end of child pipe
+    else if (pid > 0)
+    { // parent process
+      // lose reading end of parent pipe amd write end of child pipe
       close(parentPipe[0]);
       close(childPipe[1]);
-      //vector<uint8_t> returnValue;
+      bool res_err = false;
 
-      //we need key and value of the key, therefore we need size 
-      //format we are using: keySize, key, valueSize, val
-      kv_store->do_all_readonly([&](string key, const vector<uint8_t> val) {  
-        
+      // we need key and value of the key, therefore we need size
+      // format we are using: keySize, key, valueSize, val
+      kv_store->do_all_readonly([&](string key, const vector<uint8_t> val)
+      {
         size_t keyLen = key.length();
         size_t valLen = val.size();
-        write(parentPipe[1], &keyLen, sizeof(key.length()));
-        write(parentPipe[1], key.c_str(),  key.length());
-        write(parentPipe[1], &valLen, sizeof(val.size()));
-        write(parentPipe[1], val.data(), val.size()); 
-
-      }, [&]() {});
+        
+        if (write(parentPipe[1], &keyLen, sizeof(key.length())) == -1)
+          res_err = true;
+        if (write(parentPipe[1], key.c_str(), key.length()) == -1)
+          res_err = true;
+        if (write(parentPipe[1], &valLen, sizeof(val.size())) == -1)
+          res_err = true;
+        if (write(parentPipe[1], val.data(), val.size()) == -1)
+          res_err = true;
+      },
+      [&]() {});
 
       close(parentPipe[1]);
-      cout<<"hello3"<<endl;
-      //wait for msg
-      /*
-      int status;
-      if(waitpid(pid, &status, WUNTRACED | WCONTINUED)>10000) return {false, RES_ERR_SERVER, {}};//return server error
-      
-      cout<<"hello69\n";
-      int status2;
-      if((status2 = WIFEXITED(status))){
-        if(status2 < 0) return {false, RES_ERR_SERVER, {}};
-      }
-      cout << "hi78\n";
-*/
-      //reading from the child
+      if (res_err)
+        return {false, RES_ERR_SERVER, {}};
+
+      // reading from the child
       size_t theSize;
-      read(childPipe[0], &theSize, sizeof(size_t));
-      vector<uint8_t> childReturn(theSize);
-      read(childPipe[0], childReturn.data(), theSize);
-      //childReturn.resize(size);
-
-
-      //wait for msg
       int status;
-      if(waitpid(pid, &status, WUNTRACED | WCONTINUED)>10000) return {false, RES_ERR_SERVER, {}};//return server error
+      if (read(childPipe[0], &theSize, sizeof(size_t)) <= 0)
+      {
+        return {false, RES_ERR_SERVER, {}};
+      }
       
-      cout<<"hello69\n";
+      vector<uint8_t> childReturn(theSize);
+      if (read(childPipe[0], childReturn.data(), theSize) <= 0)
+      {
+        return {false, RES_ERR_SERVER, {}};
+      }
+
+      // wait for msg and to prevent warning
+      if (waitpid(pid, &status, WUNTRACED | WCONTINUED) > 10000)
+        return {false, RES_ERR_SERVER, {}}; // return server error
+      /* no need
       int status2;
       if((status2 = WIFEXITED(status))){
         if(status2 < 0) return {false, RES_ERR_SERVER, {}};
       }
+      */
 
-
-      cout<<theSize<<endl;
-    close(parentPipe[0]);
-    close(childPipe[1]);
-    close(childPipe[0]);
-    cout << "yooo\n";
-    return {true, RES_OK, childReturn}; 
-    
-    }else{ //child process
-      //close pipe for parent write and children write
-    close(parentPipe[1]);
-    close(childPipe[0]);
-    //use child_mr here
-    /*if (!child_process(parentPipe[0], childPipe[1], func_mr.first, func_mr.second)) {
-      return {false, RES_ERR_SERVER, {}};
-    } */
-    if (child_process(parentPipe[0], childPipe[1], func_mr.first, func_mr.second)){
-      exit(EXIT_SUCCESS);
-      //return {true, RES_OK, {}};
-	}
-    else{
-      //problem
-      exit(EXIT_FAILURE);
-      //return {false, RES_ERR_SERVER, {}};
-	} 
-    //cout << "The real end of child\n";
+      close(parentPipe[0]);
+      close(childPipe[1]);
+      close(childPipe[0]);
+      return {true, RES_OK, childReturn};
+    }
+    else
+    { // child process
+      // close pipe for parent write and children write
+      close(parentPipe[1]);
+      close(childPipe[0]);
+      // use child_mr here
+      /*if (!child_process(parentPipe[0], childPipe[1], func_mr.first, func_mr.second)) {
+        return {false, RES_ERR_SERVER, {}};
+      } */
+      if (child_process(parentPipe[0], childPipe[1], func_mr.first, func_mr.second))
+      {
+        _Exit(EXIT_SUCCESS);
+        // return {true, RES_OK, {}};
+      }
+      else
+      {
+        // problem
+        _Exit(EXIT_FAILURE);
+        // return {false, RES_ERR_SERVER, {}};
+      }
+      // cout << "The real end of child\n";
     }
 
     return {false, RES_ERR_SERVER, {}};
+    //return {true, RES_OK, {}};
   }
 
   /// Shut down the storage when the server stops.  This method needs to close
   /// any open files related to incremental persistence.  It also needs to clean
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
-  virtual void shutdown() {
+  virtual void shutdown()
+  {
     fclose(storage_file);
-    //cout << "my_storage.cc::shutdown() is not implemented\n";
+    // cout << "my_storage.cc::shutdown() is not implemented\n";
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To
@@ -455,7 +466,8 @@ public:
   /// file can be renamed to replace the older version of the Storage object.
   ///
   /// @return A result tuple, as described in storage.h
-  virtual result_t save_file() {
+  virtual result_t save_file()
+  {
     return save_file_helper(auth_table, kv_store, filename, storage_file);
   }
 
@@ -466,7 +478,8 @@ public:
   /// @return A result tuple, as described in storage.h.  Note that a
   /// non-existent
   ///         file is not an error.
-  virtual result_t load_file() {
+  virtual result_t load_file()
+  {
     return load_file_helper(auth_table, kv_store, filename, storage_file, mru);
   }
 };
@@ -485,6 +498,7 @@ public:
 /// @param admin   The administrator's username
 Storage *storage_factory(const std::string &fname, size_t buckets, size_t upq,
                          size_t dnq, size_t rqq, double qd, size_t top,
-                         const std::string &admin) {
+                         const std::string &admin)
+{
   return new MyStorage(fname, buckets, upq, dnq, rqq, qd, top, admin);
 }
